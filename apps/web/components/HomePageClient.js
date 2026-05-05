@@ -310,12 +310,62 @@ export default function HomePageClient({ initialTrends = [] }) {
     uiPhase === "landing" && topic.trim() === "" && !showSuggestions;
 
   /**
-   * DEPRECATED: Text card generation removed in favor of video-only feed
-   * All LEARN and ENTERTAIN mode cards are now generated as videos
+   * Stream a text card from the backend
    */
   const streamSingleCard = useCallback(async (genId) => {
-    console.warn("⚠️  streamSingleCard() deprecated - use generateVideo() instead");
-    return ERROR_CARD_MARKER;
+    const t = topicRef.current.trim();
+    if (!t) return ERROR_CARD_MARKER;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/feed/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: t,
+          mode: modeRef.current,
+          history: historyRef.current,
+          sentimentProfile: sentimentProfileRef.current,
+        }),
+      });
+
+      if (!res.ok) return ERROR_CARD_MARKER;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        if (generationIdRef.current !== genId) {
+          reader.cancel();
+          return fullText || ERROR_CARD_MARKER;
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunkStr = decoder.decode(value, { stream: true });
+        const lines = chunkStr.split("\n");
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const dataStr = line.slice(6);
+            if (!dataStr) continue;
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.error) return ERROR_CARD_MARKER;
+              if (data.chunk) fullText += data.chunk;
+              if (data.done) return fullText;
+            } catch (e) {
+              // ignore parse errors for partial chunks
+            }
+          }
+        }
+      }
+
+      return fullText;
+    } catch (error) {
+      console.error("streamSingleCard error:", error);
+      return ERROR_CARD_MARKER;
+    }
   }, []);
 
   /**
@@ -480,12 +530,12 @@ export default function HomePageClient({ initialTrends = [] }) {
             slot = ERROR_CARD_MARKER;
           }
         } else {
-          // Generate videos for learn/entertain modes
-          const video = await generateVideo(genId);
+          // Generate text cards for learn/entertain modes
+          const text = await streamSingleCard(genId);
           slot =
-            video === "__VIDEO_ERROR__"
+            text === ERROR_CARD_MARKER
               ? ERROR_CARD_MARKER
-              : { ...video, mode: m, type: "video" };
+              : { text, mode: m };
         }
 
         setBuffer((prev) => {
@@ -543,19 +593,19 @@ export default function HomePageClient({ initialTrends = [] }) {
           settled = [{ status: "rejected", value: ERROR_CARD_MARKER }];
         }
       } else {
-        // For learn/entertain modes, generate 3 videos
+        // For learn/entertain modes, generate 3 text cards
         // Use Promise.allSettled to get results as they complete
-        const videoPromises = [
-          generateVideo(genId),
-          generateVideo(genId),
-          generateVideo(genId),
+        const promises = [
+          streamSingleCard(genId),
+          streamSingleCard(genId),
+          streamSingleCard(genId),
         ];
         
-        settled = await Promise.allSettled(videoPromises);
+        settled = await Promise.allSettled(promises);
         
-        // Update video loading count as each completes
+        // Update loading count as each completes
         settled.forEach((result, idx) => {
-          if (result.status === "fulfilled" && result.value !== "__VIDEO_ERROR__") {
+          if (result.status === "fulfilled" && result.value !== ERROR_CARD_MARKER) {
             videosLoadingRef.current++;
             setVideosLoadingCount(videosLoadingRef.current);
           }
@@ -579,9 +629,8 @@ export default function HomePageClient({ initialTrends = [] }) {
             // Item is a news article object
             return item;
           } else {
-            // Item is a video object from generateVideo()
-            // Mark it with the mode for later reference
-            return { ...item, mode: bootMode, type: "video" };
+            // Item is a string text from streamSingleCard
+            return { text: item, mode: bootMode };
           }
         })
       );

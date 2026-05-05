@@ -13,6 +13,9 @@ import { generateVideoJob, pollJobStatus } from '../../../services/video.js'
 
 const router = express.Router()
 
+// Store which node each job is on
+const jobEndpoints = {}
+
 /**
  * POST /api/video/generate
  * Submit a new video generation job
@@ -54,12 +57,14 @@ router.post('/generate', async (req, res) => {
   console.log(`Request from IP: ${ip} → ${countryCode}`)
 
   try {
-    const { jobId } = await generateVideoJob(
+    const { jobId, endpoint } = await generateVideoJob(
       topic,
       mode,
       sentimentProfile,
       countryCode
     )
+
+    jobEndpoints[jobId] = endpoint;
 
     res.json({ jobId, countryCode })
 
@@ -83,7 +88,14 @@ router.get('/status/:jobId', async (req, res) => {
   const { jobId } = req.params
 
   try {
-    const result = await pollJobStatus(jobId)
+    // Poll always hits same node
+    const endpoint = jobEndpoints[jobId]
+    
+    if (!endpoint) {
+      return res.status(404).json({ error: 'Job endpoint not found' })
+    }
+
+    const result = await pollJobStatus(jobId, endpoint)
     res.json(result)
   } catch (error) {
     console.error('Status check failed:', error.message)

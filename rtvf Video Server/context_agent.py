@@ -197,6 +197,9 @@ def enrich_prompt(base_prompt: str, topic: str, user_region: str, mode: str, new
     Otherwise: standard topic-based generation
     """
     
+    node_loc = get_node_location()
+    print(f"Node: {node_loc['city']}, {node_loc['country']}")
+    
     template = REGIONAL_TEMPLATES.get(user_region, REGIONAL_TEMPLATES['DEFAULT'])
     
     # CASE 1: NEWS VIDEO MODE
@@ -224,9 +227,18 @@ def enrich_prompt(base_prompt: str, topic: str, user_region: str, mode: str, new
         - Color scheme: News-appropriate (reds/blues for urgency, greens for positive)
         - NO text overlays inside video (all context should be visual)
         """
+        print(f"Prompt enriched: {len(enriched)} chars")
         return enriched.strip()
     
     # CASE 2: STANDARD MODE WITH REGIONAL ENRICHMENT
+    print("Fetching local trends...")
+    trends = fetch_local_trends(user_region, topic)
+    trends_text = ', '.join(trends) if trends else 'None'
+    
+    print("Fetching local news...")
+    local_news = fetch_local_news(user_region)
+    top_headline = local_news[0].get('title', 'None') if local_news else 'None'
+    
     enriched = f"""
     {base_prompt}
     
@@ -237,9 +249,14 @@ def enrich_prompt(base_prompt: str, topic: str, user_region: str, mode: str, new
     Visual style: {template.get('visualStyle')}
     
     Economic references to include if relevant: {', '.join(template.get('economicRefs', []))}
+    
+    Local Trends for Topic: {trends_text}
+    Top Local Headline: {top_headline}
     """
     
-    return enriched.strip()
+    enriched = enriched.strip()
+    print(f"Prompt enriched: {len(enriched)} chars")
+    return enriched
 
 def get_news_for_topic(topic: str, country_code: str):
     """

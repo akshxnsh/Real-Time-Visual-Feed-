@@ -29,7 +29,7 @@ export async function fetchBreakingNews(category = "breaking", country = "us") {
     // Construct query with category preference
     const categoryQuery = category !== "breaking" ? `&category=${category}` : "";
 
-    const url = `${NEWS_API_BASE}/latest?apikey=${NEWS_API_KEY}&country=${country}${categoryQuery}&sortby=published_date&limit=10`;
+    const url = `${NEWS_API_BASE}/latest?apikey=${NEWS_API_KEY}&country=${country}${categoryQuery}&size=10`;
 
     console.log(`📰 Fetching news: category=${category}, country=${country}`);
 
@@ -84,7 +84,7 @@ export async function fetchRegionalNews(country = "us", limit = 5) {
   }
 
   try {
-    const url = `${NEWS_API_BASE}/latest?apikey=${NEWS_API_KEY}&country=${country}&sortby=published_date&limit=${limit}`;
+    const url = `${NEWS_API_BASE}/latest?apikey=${NEWS_API_KEY}&country=${country}&size=${limit}`;
     
     console.log(`🌍 Fetching regional news for: ${country}`);
 
@@ -139,7 +139,7 @@ export async function searchNews(topic, country = "us") {
   try {
     const url = `${NEWS_API_BASE}/news?apikey=${NEWS_API_KEY}&q=${encodeURIComponent(
       topic
-    )}&country=${country}&sortby=published_date&limit=10`;
+    )}&country=${country}&size=10`;
 
     console.log(`🔍 Searching news for: "${topic}"`);
 
@@ -190,7 +190,7 @@ export async function getTrendingNewsTopics() {
 
   try {
     // Fetch breaking news which represents trending
-    const url = `${NEWS_API_BASE}/latest?apikey=${NEWS_API_KEY}&sortby=published_date&limit=5`;
+    const url = `${NEWS_API_BASE}/latest?apikey=${NEWS_API_KEY}&size=5`;
 
     const response = await fetch(url, {
       headers: {

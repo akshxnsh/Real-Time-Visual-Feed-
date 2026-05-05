@@ -43,7 +43,7 @@ async def generate(req: GenerateRequest):
     # ← CHANGE 3: enrich prompt before passing to generator
     enriched = enrich_prompt(
         base_prompt=req.prompt,
-        topic=req.topic or req.prompt,
+        topic=req.topic,
         user_region=req.user_region,
         mode=req.mode
     )

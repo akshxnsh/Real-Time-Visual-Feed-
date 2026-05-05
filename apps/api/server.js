@@ -29,8 +29,7 @@ if (!process.env.GROQ_API_KEY) {
 
 // Check for video generation environment variables
 const hasVideoConfig =
-  process.env.IO_NET_API_KEY && 
-  process.env.IO_NET_ENDPOINT;
+  process.env.IO_NET_ENDPOINT_US;
 if (hasVideoConfig) {
   console.log("✅ Video generation configured");
 } else {
