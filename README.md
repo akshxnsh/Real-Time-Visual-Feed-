@@ -1,149 +1,110 @@
 # RTVLF — Real-Time Visual Learning Feed
 
-An AI-powered infinite feed of short-form educational and entertaining content. Each card is generated fresh in real-time using Groq's Llama model — nothing is pre-stored.
+An AI-powered infinite feed of short-form educational, entertaining, and live news content. The platform dynamically routes video generation tasks to regional GPU nodes (io.net) and provides a highly contextualized scroll experience powered by Groq and real-time news data.
 
-**Phase 1 Features:**
-- Text-only feed with learn/entertain modes
-- Real-time card generation via Groq API
-- Automatic infinite scrolling
-- Session-aware history to prevent concept repetition
-- SSE streaming for responsive UI
+## Features
+
+- **Multi-Mode Feed:** Toggle seamlessly between `LEARN`, `ENTERTAIN`, and `LIVE NEWS` modes.
+- **Geographic GPU Routing:** Automatically routes video generation workloads to specific io.net nodes (e.g., US vs. India) based on the user's region for optimized latency.
+- **Stateful Polling:** The Express backend maintains state to track which regional GPU node generated which video job, ensuring reliable polling.
+- **Contextual Video Enrichment:** The Python video backend uses `pytrends` and geographic data to inject local trends into the video generation prompts.
+- **Live News Mode:** Fetches breaking news via the NewsData API and formats it into digestible feed cards.
+- **Intelligent Trending Section:** Scrapes live breaking news headlines and uses Groq (LLM) to intelligently extract and format the top overarching trending topics into the UI.
+- **Graceful Fallbacks:** Seamlessly falls back to text-only streaming cards if GPU nodes are temporarily offline.
 
 ## Tech Stack
 
-- **Frontend:** Next.js 14 (App Router), React 18
-- **Backend:** Node.js + Express
-- **LLM:** Groq API (llama-3.3-70b-versatile)
-- **Streaming:** Server-Sent Events (SSE)
+- **Frontend:** Next.js 14 (App Router), React 18, Tailwind CSS
+- **API Backend:** Node.js + Express
+- **Video Backend:** Python + FastAPI + ComfyUI
+- **LLM Engine:** Groq API (`llama-3.3-70b-versatile`)
+- **News Engine:** NewsData API
+- **Infrastructure:** io.net GPU Cloud
 
 ## Project Structure
 
 ```
 rtvlf/
 ├── apps/
-│   ├── api/           # Express backend
-│   │   ├── server.js
+│   ├── api/                 # Express backend (Routing, WebSockets, State Management)
+│   │   ├── routes/          # Video & News API Routes
+│   │   ├── server.js        # Entry point
 │   │   └── package.json
-│   └── web/           # Next.js frontend
+│   └── web/                 # Next.js frontend (UI, Streaming, Feed Logic)
 │       ├── app/
 │       ├── components/
+│       ├── lib/
 │       └── package.json
+├── rtvlf Video Server/      # Python GPU Worker Node Code
+│   ├── main.py              # FastAPI server handling ComfyUI video jobs
+│   ├── context_agent.py     # Geographic trend enrichment (pytrends)
+│   └── requirements.txt
 ├── services/
-│   └── llm.js         # LLM abstraction layer (Groq now, io.net in Phase 4)
-├── package.json       # Root workspace config
-├── .env.example       # Environment variable template
-└── README.md
+│   ├── llm.js               # Groq integrations (Card Generation, Trend Extraction)
+│   ├── news.js              # NewsData API integration
+│   └── video.js             # Regional GPU routing logic
+├── .env.example             # Environment variable template
+└── package.json             # Root workspace config
 ```
 
 ## Getting Started
 
-### 1. Clone and Install
+### 1. Clone and Install Dependencies
 
 ```bash
-cd rtvlf
+git clone <repository_url>
+cd "Real TIme Visual Feed"
+
+# Install Node.js dependencies
 npm install
+cd apps/api && npm install
+cd ../web && npm install
 ```
 
-### 2. Set Up Environment
+### 2. Set Up Environment Variables
 
-Copy `.env.example` to `.env` and add your Groq API key:
+Copy `.env.example` to `.env` in the root directory:
 
 ```bash
 cp .env.example .env
 ```
 
-Then edit `.env`:
+Edit the `.env` file with your actual keys:
+```env
+GROQ_API_KEY=your_groq_api_key
+NEWSDATA_API_KEY=your_newsdata_api_key
+NEXT_PUBLIC_API_URL=http://localhost:3001
 
+# Production GPU Nodes (io.net)
+IO_NET_ENDPOINT_US=http://<US_NODE_IP>:8000/
+IO_NET_ENDPOINT_IN=http://<INDIA_NODE_IP>:8000/
 ```
-GROQ_API_KEY=your_actual_groq_api_key
+
+### 3. Deploying the Python Video Servers (Optional)
+If you want to run the video generation pipeline, you need to deploy the `rtvf Video Server` folder to your GPU instances:
+```bash
+cd "rtvf Video Server"
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
+*(Make sure to update your `.env` file with the public IPs of these instances).*
 
-Get a free Groq API key at [console.groq.com](https://console.groq.com).
-
-### 3. Run Both Apps
+### 4. Run the Web Application
 
 ```bash
 npm run dev
 ```
 
-This runs the backend on `http://localhost:3001` and frontend on `http://localhost:3000` concurrently.
-
-### 4. Start Generating
-
-- Open `http://localhost:3000` in your browser
-- Enter a topic (e.g., "quantum computing")
-- Toggle between "Learn" and "Entertain" modes
-- Watch cards stream in real-time
-- Scroll to auto-load more cards
-
-## API Reference
-
-### POST `/api/feed/generate`
-
-Generate a single feed card and stream the response via SSE.
-
-**Request:**
-```json
-{
-  "topic": "climate change",
-  "mode": "learn",
-  "history": ["Previous card summary 1", "Previous card summary 2"]
-}
-```
-
-**Response:** Server-Sent Events stream
-```
-data: {"chunk": "You are on a planet..."}
-data: {"chunk": "with a delicate..."}
-...
-data: {"done": true}
-```
+This starts the Express backend on `http://localhost:3001` and the Next.js frontend on `http://localhost:3000`.
 
 ## Architecture Notes
 
-### Why `services/llm.js`?
+### Intelligent Trending Extraction
+The UI's trending chips are powered entirely by live data. The Node backend fetches breaking news headlines using `NewsData API`, and then passes them to `Groq`. The LLM intelligently parses the headlines, identifies the overarching global narratives, and returns a formatted JSON array to the frontend.
 
-All LLM calls go through a single abstraction layer in `services/llm.js`. This means:
-- **Phase 1:** Groq API (now)
-- **Phase 4:** Swap to io.net Llama 3 with zero changes to the rest of the codebase
-
-Never call any AI API directly from routes or components.
-
-### History & Repetition Prevention
-
-Each card request includes a `history` array of previous card summaries. The system prompt uses this to ensure the model never repeats concepts in a session.
-
-### Mode as First-Class Citizen
-
-The `mode` parameter ("learn" or "entertain") is passed:
-- Through the API request
-- To the system prompt
-- Eventually to user profiles (Phase 2)
-
-This ensures consistent behavior across the app.
-
-## Development Guide
-
-**Backend:**
-- Edit `apps/api/server.js` for routes
-- Edit `services/llm.js` for LLM logic
-- Restart with `npm run dev`
-
-**Frontend:**
-- Edit `apps/web/app/page.js` for main feed logic
-- Edit `apps/web/components/` for UI components
-- Hot-reload happens automatically
-
-## What's Next?
-
-**Phase 2:** Add PostgreSQL user profiles and embeddings-based memory with pgvector.
-
-**Phase 3:** Transform text cards into visual content with SVG diagrams and DALL-E images.
-
-**Phase 4:** Replace Groq with open-source Llama 3 on io.net GPU infrastructure, add BullMQ worker queue and Redis caching.
-
-**Phase 5:** Voice I/O, mid-scroll follow-up questions, knowledge graphs, and curriculum mode.
+### Geographic Node Routing
+Video requests hit the Express backend first. The `services/video.js` module looks at the user's `timezone` or `countryCode` and dynamically routes the request to either the US GPU node (`IO_NET_ENDPOINT_US`) or the India GPU node (`IO_NET_ENDPOINT_IN`). The backend maps the resulting `jobId` to the specific node in memory so that subsequent polling requests query the correct physical machine.
 
 ---
 
-**Status:** Phase 1 — Core loop working end-to-end ✅
+**Status:** Ready for Production GPU Deployment ✅
