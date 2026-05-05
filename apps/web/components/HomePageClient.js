@@ -249,11 +249,25 @@ export default function HomePageClient({ initialTrends = [] }) {
       try {
         setTrendingFading(true);
         await new Promise((r) => setTimeout(r, 120));
-        const res = await fetch("/api/trends", { cache: "no-store" });
+        const res = await fetch(`${API_BASE}/api/trending`, { cache: "no-store" });
         if (!res.ok) throw new Error("trends failed");
         const data = await res.json();
-        const list = Array.isArray(data?.trends) ? data.trends : [];
-        setTrendingDisplay(mapTrendRecordsToDisplay(list));
+        
+        // Map the backend's topics format to the display format
+        const list = Array.isArray(data?.topics) ? data.topics : [];
+        const displayList = list.slice(0, 6).map((t, idx) => {
+          let exploring = t.exploring;
+          if (exploring >= 1000) exploring = `${(exploring / 1000).toFixed(1)}k`;
+          return {
+            id: t.id || idx + 1,
+            topic: t.topic,
+            emoji: t.emoji || "📌",
+            category: t.category || "breaking",
+            exploringLabel: `${exploring} people exploring`,
+          };
+        });
+        
+        setTrendingDisplay(displayList);
         setTrendingLoading(false);
         setTrendingFading(false);
         if (showFlash) {
