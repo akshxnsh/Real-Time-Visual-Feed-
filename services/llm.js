@@ -102,3 +102,61 @@ Rules:
 
 Topic history (do not repeat these concepts): ${historyText}`;
 }
+
+/**
+ * Extract trending topics from a list of news articles using Groq.
+ * @param {Array} articles - Array of news article objects containing titles
+ * @returns {Promise<Array>} - Array of trending topic objects
+ */
+export async function extractTrendsWithGroq(articles) {
+  if (!articles || articles.length === 0) return [];
+  
+  // Extract just the titles to save tokens
+  const headlines = articles
+    .map(a => a.title)
+    .filter(Boolean)
+    .slice(0, 40) // Limit to top 40 headlines to avoid context window limits
+    .join("\n");
+    
+  const systemPrompt = `You are a trend analysis engine. Your job is to read a list of breaking news headlines and extract the 6 most interesting, overarching trending topics.
+Return ONLY a valid JSON object with a single key "trends" containing an array of objects. Do not include any conversational text.
+Each object in the "trends" array must match this exact structure:
+{
+  "topic": "Specific Topic Name (e.g. OpenAI GPT-5, not just AI)",
+  "emoji": "🔥",
+  "category": "tech" (choose one: breaking, business, science, sports, entertainment, health, tech, world),
+  "exploring": 45000 (a random integer between 20000 and 80000 to simulate search volume)
+}`;
+
+  const userPrompt = `Here are the latest headlines:\n\n${headlines}`;
+
+  try {
+    const response = await client.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.2,
+      response_format: { type: "json_object" }, // Wait, response_format json_object requires the word "JSON" in prompt, which we have.
+    });
+
+    const content = response.choices[0]?.message?.content || "[]";
+    
+    // Parse the JSON. Groq might return {"trends": [...]} if we force json_object, so handle both array and wrapper object.
+    const parsed = JSON.parse(content);
+    let trendsList = Array.isArray(parsed) ? parsed : (parsed.trends || parsed.topics || Object.values(parsed)[0] || []);
+    
+    // Ensure it matches the expected format with IDs
+    return trendsList.map((item, idx) => ({
+      id: idx + 1,
+      topic: item.topic || "Unknown Topic",
+      emoji: item.emoji || "📰",
+      category: item.category || "breaking",
+      exploring: item.exploring || Math.floor(Math.random() * 50000 + 20000)
+    }));
+  } catch (error) {
+    console.error("Groq trend extraction failed:", error);
+    return [];
+  }
+}

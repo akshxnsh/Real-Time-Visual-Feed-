@@ -253,7 +253,7 @@ export default function HomePageClient({ initialTrends = [] }) {
         if (!res.ok) throw new Error("trends failed");
         const data = await res.json();
         
-        // Map the backend's topics format to the display format
+        // Map the Groq topics format to the display format
         const list = Array.isArray(data?.topics) ? data.topics : [];
         const displayList = list.slice(0, 6).map((t, idx) => {
           let exploring = t.exploring;
@@ -261,7 +261,7 @@ export default function HomePageClient({ initialTrends = [] }) {
           return {
             id: t.id || idx + 1,
             topic: t.topic,
-            emoji: t.emoji || "📌",
+            emoji: t.emoji || "🔥",
             category: t.category || "breaking",
             exploringLabel: `${exploring} people exploring`,
           };

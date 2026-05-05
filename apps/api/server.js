@@ -82,67 +82,10 @@ async function extractTrendingTopics() {
       return [];
     }
 
-    // Extract keywords from titles
-    const keywordMap = {};
-    const categoryEmojis = {
-      business: "💼",
-      science: "🔬",
-      sports: "⚽",
-      entertainment: "🎬",
-      health: "🏥",
-      tech: "🤖",
-      world: "🌍",
-      breaking: "🔥",
-      default: "📰"
-    };
-
-    allArticles.forEach(article => {
-      const title = article.title || "";
-      const category = article.category || "breaking";
-      
-      // Extract meaningful words (length > 3 characters, not common words)
-      const commonWords = new Set([
-        "the", "and", "for", "with", "from", "that", "this", "have", "will",
-        "said", "says", "says", "after", "report", "according", "says", "could",
-        "would", "news", "breaking", "latest", "today", "live", "gets"
-      ]);
-
-      const words = title
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(word => 
-          word.length > 3 && 
-          !commonWords.has(word) &&
-          !/[^a-z]/i.test(word)
-        );
-
-      words.forEach(word => {
-        const capitalized = word.charAt(0).toUpperCase() + word.slice(1);
-        if (!keywordMap[capitalized]) {
-          keywordMap[capitalized] = {
-            topic: capitalized,
-            count: 0,
-            category: category,
-            emoji: categoryEmojis[category] || categoryEmojis.default
-          };
-        }
-        keywordMap[capitalized].count++;
-      });
-    });
-
-    // Sort by frequency and take top 12
-    const trending = Object.values(keywordMap)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 12)
-      .map((item, idx) => ({
-        id: idx + 1,
-        topic: item.topic,
-        emoji: item.emoji,
-        category: item.category,
-        exploring: Math.floor(Math.random() * 50000 + 20000) // Simulated count
-      }));
-
-    console.log(`✅ Extracted ${trending.length} trending topics from news`);
+    const { extractTrendsWithGroq } = await import("../../services/llm.js");
+    const trending = await extractTrendsWithGroq(allArticles);
+    
+    console.log(`✅ Extracted ${trending.length} trending topics using Groq`);
     return trending;
   } catch (error) {
     console.error("Failed to extract trending topics:", error.message);
