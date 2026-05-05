@@ -1,0 +1,138 @@
+.trending-section {
+  width: 100%;
+  margin: 28px 0 0;
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+
+.trending-section--fade {
+  opacity: 0.35;
+}
+
+.trending-section__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 0;
+}
+
+.trending-section__label-group {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.trending-section__label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.trending-section__see-all {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s ease;
+  text-decoration: none;
+  display: inline-block;
+  font: inherit;
+}
+
+a.trending-section__see-all {
+  color: var(--accent);
+}
+
+.trending-section__see-all:hover {
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
+.trending-section__updated {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  animation: trendingUpdatedFlash 2s ease forwards;
+}
+
+@keyframes trendingUpdatedFlash {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.trending-section__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.trending-card-skeleton {
+  min-height: 120px;
+  height: 120px;
+  border-radius: 16px;
+  background: linear-gradient(
+    90deg,
+    #13131a 0%,
+    #1e1e28 50%,
+    #13131a 100%
+  );
+  background-size: 200% 100%;
+  animation: trendingSkeletonShimmer 1.2s ease-in-out infinite;
+  border: 1px solid #2a2a3a;
+}
+
+@keyframes trendingSkeletonShimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (max-width: 1023px) {
+  .trending-section__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 639px) {
+  .trending-section__grid {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 12px;
+    padding-bottom: 8px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .trending-section__grid .trending-card {
+    flex: 0 0 200px;
+    scroll-snap-align: start;
+  }
+}

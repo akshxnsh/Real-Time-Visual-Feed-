@@ -1,0 +1,21 @@
+.card {
+  background-color: var(--bg-primary);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.2s;
+}
+
+.card:hover {
+  box-shadow: var(--card-shadow-hover);
+}
+
+.card-content {
+  padding: 16px;
+  line-height: 1.6;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.card-content p {
+  margin: 0;
+}

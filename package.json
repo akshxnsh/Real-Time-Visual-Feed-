@@ -1,0 +1,19 @@
+{
+  "name": "rtvlf",
+  "version": "1.0.0",
+  "description": "Real-Time Visual Learning Feed — AI-generated short-form educational content",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\"",
+    "build": "npm run build --workspaces",
+    "start": "npm start --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}

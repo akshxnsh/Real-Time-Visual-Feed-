@@ -1,0 +1,63 @@
+@keyframes cardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.feed-error-card {
+  position: relative;
+  background-color: #1a0a0a;
+  border: 1px solid #ff4444;
+  border-radius: 12px;
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 60px 40px;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  animation: cardFadeIn 400ms ease-out forwards;
+  opacity: 0;
+}
+
+.feed-error-text {
+  color: var(--text-primary);
+  font-size: clamp(16px, 2vw, 18px);
+  line-height: 1.6;
+  margin: 0;
+  padding-top: 8px;
+}
+
+.feed-error-retry {
+  background: transparent;
+  border: none;
+  color: #ff6666;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: background-color 0.2s, color 0.2s;
+  margin-bottom: 4px;
+}
+
+.feed-error-retry:hover {
+  background-color: rgba(255, 68, 68, 0.15);
+  color: #ff8888;
+}
+
+.feed-error-retry-icon {
+  display: block;
+}
+
+@media (max-width: 640px) {
+  .feed-error-card {
+    padding: 48px 24px;
+  }
+}

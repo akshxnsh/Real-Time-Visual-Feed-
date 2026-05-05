@@ -1,0 +1,445 @@
+/**
+ * Sentiment & Preference Tracking System
+ * 
+ * This is the ONLY place in the codebase where sentiment profile logic lives.
+ * It runs entirely in the background — the user never sees it, never configures it.
+ * It silently watches how the user interacts with videos and builds a preference profile
+ * that shapes every future video prompt.
+ * 
+ * In Phase 4, this profile moves from localStorage to PostgreSQL with cross-device sync.
+ * Only this file needs to change — no other files affected.
+ */
+
+// Signal weights for engagement scoring
+const SIGNAL_WEIGHTS = {
+  watchedFull: 0.7,       // watched >90% of video
+  watchedHalf: 0.3,       // watched 50-90%
+  replayedOnce: 0.6,      // looped at least once
+  replayedMultiple: 0.9,  // looped 3+ times
+  scrolledEarly: -0.6,    // left before 20%
+  scrolledMid: -0.2,      // left at 20-50%
+  liked: 0.9,
+  saved: 1.0,             // strongest positive signal
+  shared: 0.95,
+};
+
+// Signal weights for news engagement (different from video)
+const NEWS_SIGNAL_WEIGHTS = {
+  readFull: 0.8,          // read >3 seconds on card
+  readHalf: 0.4,          // read 1-3 seconds
+  scrolledAwayEarly: -0.4, // left before 1 second
+  liked: 0.85,
+  saved: 0.95,            // high weight for news save
+  shared: 0.9,
+  clickedLink: 1.0,       // strongest signal - actual engagement
+};
+
+// Exponential moving average learning rate
+// Higher = adapts faster but less stable
+// Lower = more stable but slower to adapt
+// 0.15 is sweet spot for scroll feed
+const LEARNING_RATE = 0.15;
+
+/**
+ * Default sentiment profile structure
+ * All values are 0.0 to 1.0, default 0.5
+ */
+const defaultProfile = {
+  // Topic affinity scores
+  topics: {
+    space: 0.5,
+    history: 0.5,
+    technology: 0.5,
+    psychology: 0.5,
+    science: 0.5,
+    culture: 0.5,
+    nature: 0.5,
+    sports: 0.5,
+    entertainment: 0.5,
+    mystery: 0.5,
+    finance: 0.5,
+    health: 0.5,
+  },
+
+  // News category preferences
+  newsCategories: {
+    breaking: 0.5,
+    business: 0.5,
+    science: 0.5,
+    sports: 0.5,
+    entertainment: 0.5,
+    health: 0.5,
+    world: 0.5,
+    tech: 0.5,
+  },
+
+  // Visual style preferences
+  style: {
+    dramatic: 0.5,        // high contrast, fast cuts
+    calm: 0.5,            // slow, smooth, meditative
+    educational: 0.5,     // clean, structured, informative
+    cinematic: 0.5,       // movie-like, story-driven
+    abstract: 0.5,        // artistic, conceptual
+    realistic: 0.5,       // documentary style
+  },
+
+  // Content depth preference
+  depth: {
+    surface: 0.5,         // quick facts, broad strokes
+    medium: 0.5,          // some detail, balanced
+    deep: 0.5,            // complex, detailed, nuanced
+  },
+
+  // Pacing preference
+  pacing: {
+    fast: 0.5,            // quick cuts, high energy
+    medium: 0.5,
+    slow: 0.5,            // slow reveals, breathing room
+  },
+
+  // Mode preference
+  mode: {
+    learn: 0.5,
+    entertain: 0.5,
+    news: 0.5,            // news mode tracking
+  },
+
+  // Metadata
+  totalVideosWatched: 0,
+  totalNewsArticlesRead: 0,
+  totalLikes: 0,
+  totalSaves: 0,
+  lastUpdated: null,
+  profileConfidence: 0.0, // 0.0 to 1.0
+  // Below 0.3 = too early to personalize heavily
+  // Reaches 1.0 after 20 videos watched
+};
+
+/**
+ * Load sentiment profile from localStorage
+ * Returns default if not found or corrupted
+ * @returns {object} - Complete sentiment profile
+ */
+export function loadProfile() {
+  if (typeof window === "undefined") {
+    return { ...defaultProfile };
+  }
+
+  try {
+    const stored = localStorage.getItem("rtvlf_sentiment_profile");
+    return stored ? JSON.parse(stored) : { ...defaultProfile };
+  } catch (e) {
+    console.warn("Could not load sentiment profile, using default:", e);
+    return { ...defaultProfile };
+  }
+}
+
+/**
+ * Save sentiment profile to localStorage
+ * Handles errors silently to avoid blocking the feed
+ * @param {object} profile - Complete sentiment profile
+ */
+export function saveProfile(profile) {
+  if (typeof window === "undefined") return;
+
+  try {
+    localStorage.setItem("rtvlf_sentiment_profile", JSON.stringify(profile));
+  } catch (e) {
+    console.warn("Could not save sentiment profile:", e);
+  }
+}
+
+/**
+ * Calculate engagement score from signals
+ * Returns 0.0 to 1.0
+ * @param {object} signals - Watch/interaction signals
+ * @returns {number} - Normalized engagement score
+ */
+export function calculateEngagementScore(signals) {
+  let score = 0;
+
+  // Passive watch signals
+  if (signals.completionRate > 0.9) {
+    score += SIGNAL_WEIGHTS.watchedFull;
+  } else if (signals.completionRate > 0.5) {
+    score += SIGNAL_WEIGHTS.watchedHalf;
+  }
+
+  // Replay signals
+  if (signals.replayCount >= 3) {
+    score += SIGNAL_WEIGHTS.replayedMultiple;
+  } else if (signals.replayCount >= 1) {
+    score += SIGNAL_WEIGHTS.replayedOnce;
+  }
+
+  // Scroll-away signals
+  if (signals.scrolledAwayAt < 0.2) {
+    score += SIGNAL_WEIGHTS.scrolledEarly;
+  } else if (signals.scrolledAwayAt < 0.5) {
+    score += SIGNAL_WEIGHTS.scrolledMid;
+  }
+
+  // Explicit interaction signals
+  if (signals.liked) score += SIGNAL_WEIGHTS.liked;
+  if (signals.saved) score += SIGNAL_WEIGHTS.saved;
+  if (signals.shared) score += SIGNAL_WEIGHTS.shared;
+
+  // Normalize to 0.0 - 1.0
+  // Offset by 0.6 and scale to handle negative weights gracefully
+  return Math.max(0, Math.min(1, (score + 0.6) / 1.6));
+}
+
+/**
+ * Calculate engagement score from news article signals
+ * Different weights than video since news engagement is measured differently
+ * @param {object} signals - News interaction signals
+ * @returns {number} - Normalized engagement score (0.0-1.0)
+ */
+export function calculateNewsEngagementScore(signals) {
+  let score = 0;
+
+  // Reading time signals
+  if (signals.completionRate > 0.8) {
+    score += NEWS_SIGNAL_WEIGHTS.readFull;
+  } else if (signals.completionRate > 0.3) {
+    score += NEWS_SIGNAL_WEIGHTS.readHalf;
+  }
+
+  // Scroll-away penalties
+  if (signals.completionRate < 0.2) {
+    score += NEWS_SIGNAL_WEIGHTS.scrolledAwayEarly;
+  }
+
+  // Explicit interaction signals
+  if (signals.liked) score += NEWS_SIGNAL_WEIGHTS.liked;
+  if (signals.saved) score += NEWS_SIGNAL_WEIGHTS.saved;
+  if (signals.shared) score += NEWS_SIGNAL_WEIGHTS.shared;
+
+  // Clicked link is strongest signal
+  if (signals.clickedLink) score += NEWS_SIGNAL_WEIGHTS.clickedLink;
+
+  // Normalize to 0.0 - 1.0
+  // Offset by 0.5 and scale appropriately
+  return Math.max(0, Math.min(1, (score + 0.5) / 2.0));
+}
+
+/**
+ * Exponential moving average function
+ * Gives more weight to recent behavior
+ * @param {number} current - Current profile value
+ * @param {number} newValue - New signal value (0.0-1.0)
+ * @param {number} rate - Learning rate (0.0-1.0)
+ * @returns {number} - Updated value
+ */
+function ema(current, newValue, rate) {
+  return current * (1 - rate) + newValue * rate;
+}
+
+/**
+ * Update sentiment profile based on video or news interaction
+ * Called after user leaves a video card or news article
+ * @param {object} currentProfile - Current sentiment profile
+ * @param {object} contentMeta - Metadata about the content shown
+ * @param {object} signals - Watch/interaction signals
+ * @returns {object} - Updated sentiment profile
+ */
+export function updateProfile(currentProfile, contentMeta, signals) {
+  const profile = { ...currentProfile };
+
+  // Handle news mode separately
+  if (contentMeta.mode === "news") {
+    const newsEngagementScore = calculateNewsEngagementScore(signals);
+
+    // Update news category preferences
+    if (contentMeta.category && profile.newsCategories[contentMeta.category] !== undefined) {
+      profile.newsCategories[contentMeta.category] = ema(
+        profile.newsCategories[contentMeta.category],
+        newsEngagementScore,
+        LEARNING_RATE
+      );
+    }
+
+    // Update news mode preference
+    profile.mode.news = ema(profile.mode.news, newsEngagementScore, LEARNING_RATE);
+
+    // Update metadata
+    profile.totalNewsArticlesRead++;
+    if (signals.liked) profile.totalLikes++;
+    if (signals.saved) profile.totalSaves++;
+    profile.lastUpdated = Date.now();
+
+    // Include news articles in confidence calculation (count 2x as much as videos)
+    const totalEngagements = profile.totalVideosWatched + (profile.totalNewsArticlesRead * 0.5);
+    profile.profileConfidence = Math.min(1.0, totalEngagements / 20);
+
+    return profile;
+  }
+
+  // Handle video mode (original logic)
+  const engagementScore = calculateEngagementScore(signals);
+
+  // Update topic affinities
+  // contentMeta.categories is array like ['space', 'science']
+  if (contentMeta.categories && Array.isArray(contentMeta.categories)) {
+    contentMeta.categories.forEach((category) => {
+      if (profile.topics[category] !== undefined) {
+        profile.topics[category] = ema(
+          profile.topics[category],
+          engagementScore,
+          LEARNING_RATE
+        );
+      }
+    });
+  }
+
+  // Update style based on mode
+  if (contentMeta.mode === "entertain") {
+    profile.style.dramatic = ema(
+      profile.style.dramatic,
+      engagementScore,
+      LEARNING_RATE
+    );
+    profile.style.cinematic = ema(
+      profile.style.cinematic,
+      engagementScore,
+      LEARNING_RATE
+    );
+  }
+  if (contentMeta.mode === "learn") {
+    profile.style.educational = ema(
+      profile.style.educational,
+      engagementScore,
+      LEARNING_RATE
+    );
+    profile.style.calm = ema(profile.style.calm, engagementScore, LEARNING_RATE);
+  }
+
+  // Update depth based on completion rate
+  if (signals.completionRate > 0.8) {
+    profile.depth.deep = ema(profile.depth.deep, engagementScore, LEARNING_RATE);
+  } else if (signals.completionRate < 0.3) {
+    profile.depth.surface = ema(
+      profile.depth.surface,
+      engagementScore,
+      LEARNING_RATE
+    );
+  } else {
+    profile.depth.medium = ema(
+      profile.depth.medium,
+      engagementScore,
+      LEARNING_RATE
+    );
+  }
+
+  // Update pacing based on how long they watched
+  // Fast engagement → prefer fast pacing
+  if (signals.completionRate > 0.8) {
+    profile.pacing.fast = ema(
+      profile.pacing.fast,
+      engagementScore,
+      LEARNING_RATE
+    );
+  } else {
+    profile.pacing.slow = ema(
+      profile.pacing.slow,
+      engagementScore,
+      LEARNING_RATE
+    );
+  }
+
+  // Update mode preference
+  const modeKey = contentMeta.mode === "entertain" ? "entertain" : "learn";
+  profile.mode[modeKey] = ema(profile.mode[modeKey], engagementScore, LEARNING_RATE);
+
+  // Update metadata
+  profile.totalVideosWatched++;
+  if (signals.liked) profile.totalLikes++;
+  if (signals.saved) profile.totalSaves++;
+  profile.lastUpdated = Date.now();
+
+  // Profile confidence reaches 1.0 after 20 videos watched
+  profile.profileConfidence = Math.min(1.0, profile.totalVideosWatched / 20);
+
+  return profile;
+}
+
+/**
+ * Get top N topics by affinity score
+ * @param {object} profile - Sentiment profile
+ * @param {number} n - Number of topics to return
+ * @returns {string[]} - Array of topic names
+ */
+export function getTopPreferences(profile, n = 3) {
+  return Object.entries(profile.topics)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, n)
+    .map(([topic]) => topic);
+}
+
+/**
+ * Get dominant visual style
+ * @param {object} profile - Sentiment profile
+ * @returns {string} - Style name with highest score
+ */
+export function getDominantStyle(profile) {
+  return Object.entries(profile.style).sort(([, a], [, b]) => b - a)[0][0];
+}
+
+/**
+ * Get depth preference
+ * @param {object} profile - Sentiment profile
+ * @returns {string} - 'surface', 'medium', or 'deep'
+ */
+export function getDepthPreference(profile) {
+  return Object.entries(profile.depth).sort(([, a], [, b]) => b - a)[0][0];
+}
+
+/**
+ * Get pacing preference
+ * @param {object} profile - Sentiment profile
+ * @returns {string} - 'fast', 'medium', or 'slow'
+ */
+export function getPacingPreference(profile) {
+  return Object.entries(profile.pacing).sort(([, a], [, b]) => b - a)[0][0];
+}
+
+/**
+ * Reset sentiment profile to default
+ * Used by debug panel only
+ * @returns {object} - Fresh default profile
+ */
+export function resetProfile() {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("rtvlf_sentiment_profile");
+  }
+  return { ...defaultProfile };
+}
+
+/**
+ * Get profile as debug object
+ * Used only in development for Shift+P debug panel
+ * @param {object} profile - Sentiment profile
+ * @returns {object} - Formatted for display
+ */
+export function getProfileDebugInfo(profile) {
+  return {
+    confidence: profile.profileConfidence,
+    videosWatched: profile.totalVideosWatched,
+    likes: profile.totalLikes,
+    saves: profile.totalSaves,
+    topTopics: getTopPreferences(profile, 5),
+    dominantStyle: getDominantStyle(profile),
+    depthPreference: getDepthPreference(profile),
+    pacingPreference: getPacingPreference(profile),
+    lastUpdated: profile.lastUpdated
+      ? new Date(profile.lastUpdated).toLocaleTimeString()
+      : "never",
+    allScores: {
+      topics: profile.topics,
+      styles: profile.style,
+      depth: profile.depth,
+      pacing: profile.pacing,
+      mode: profile.mode,
+    },
+  };
+}

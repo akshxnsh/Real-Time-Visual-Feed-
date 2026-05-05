@@ -1,0 +1,94 @@
+/**
+ * Video Generation API Routes
+ * POST /api/video/generate - Submit a video generation job
+ * GET  /api/video/status/:jobId - Check job status
+ * 
+ * The video server handles geographic routing and load balancing internally.
+ * All requests go to a single entry point (IO_NET_ENDPOINT).
+ */
+
+import express from 'express'
+import geoip from 'geoip-lite'
+import { generateVideoJob, pollJobStatus } from '../../../services/video.js'
+
+const router = express.Router()
+
+/**
+ * POST /api/video/generate
+ * Submit a new video generation job
+ * 
+ * Body: {
+ *   topic: string (required),
+ *   mode: "learn" | "entertain" (required),
+ *   history: array (optional),
+ *   sentimentProfile: object (optional),
+ *   timezone: string (optional - from browser Intl.DateTimeFormat)
+ * }
+ * 
+ * Returns: { jobId, countryCode }
+ */
+router.post('/generate', async (req, res) => {
+  const {
+    topic,
+    mode = 'learn',
+    history = [],
+    sentimentProfile = null,
+    timezone = ''
+  } = req.body
+
+  if (!topic) {
+    return res.status(400).json({ error: 'topic is required' })
+  }
+
+  if (!['learn', 'entertain'].includes(mode)) {
+    return res.status(400).json({ error: 'mode must be "learn" or "entertain"' })
+  }
+
+  // Detect user country from IP
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]
+         || req.headers['cf-connecting-ip']
+         || req.ip
+  const geo = geoip.lookup(ip)
+  const countryCode = geo?.country || 'US'
+
+  console.log(`Request from IP: ${ip} → ${countryCode}`)
+
+  try {
+    const { jobId } = await generateVideoJob(
+      topic,
+      mode,
+      sentimentProfile,
+      countryCode
+    )
+
+    res.json({ jobId, countryCode })
+
+  } catch (error) {
+    console.error('Video generation failed:', error.message)
+    res.status(500).json({ error: 'Generation failed' })
+  }
+})
+
+/**
+ * GET /api/video/status/:jobId
+ * Check the status of a video generation job
+ * 
+ * Returns: {
+ *   status: "pending" | "processing" | "complete" | "failed",
+ *   videoUrl: string (if complete),
+ *   error: string (if failed)
+ * }
+ */
+router.get('/status/:jobId', async (req, res) => {
+  const { jobId } = req.params
+
+  try {
+    const result = await pollJobStatus(jobId)
+    res.json(result)
+  } catch (error) {
+    console.error('Status check failed:', error.message)
+    res.status(500).json({ error: 'Status check failed' })
+  }
+})
+
+export default router
