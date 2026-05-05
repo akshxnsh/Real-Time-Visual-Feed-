@@ -34,7 +34,7 @@ function getNearestEndpoint(countryCode) {
 /**
  * Generate a new video job
  */
-export async function generateVideoJob(topic, mode, sentimentProfile, countryCode) {
+export async function generateVideoJob(topic, mode, sentimentProfile, countryCode, newsArticle = null) {
   const endpoint = getNearestEndpoint(countryCode);
   
   if (!endpoint) {
@@ -42,7 +42,9 @@ export async function generateVideoJob(topic, mode, sentimentProfile, countryCod
   }
 
   // Base prompt (before enrichment)
-  const prompt = `Create a high-quality, engaging video about ${topic}`;
+  const prompt = mode === 'news' && newsArticle 
+    ? `Create a visually animated news explanation video about: ${newsArticle.title}`
+    : `Create a high-quality, engaging video about ${topic}`;
 
   // Log routing as requested
   const region = Object.keys(IO_NET_CLUSTERS).find(key => IO_NET_CLUSTERS[key] === endpoint) || 'US';
@@ -55,7 +57,8 @@ export async function generateVideoJob(topic, mode, sentimentProfile, countryCod
       prompt: prompt,
       topic: topic,
       user_region: countryCode,
-      mode: mode
+      mode: mode,
+      news_article: newsArticle
     })
   });
 

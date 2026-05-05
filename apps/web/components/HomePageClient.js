@@ -536,13 +536,9 @@ export default function HomePageClient({ initialTrends = [] }) {
         let slot;
 
         if (m === "news") {
-          // Fetch news articles for news mode
-          const articles = await fetchNewsArticles(genId);
-          if (Array.isArray(articles) && articles.length > 0) {
-            slot = articles[0]; // Take first article
-          } else {
-            slot = ERROR_CARD_MARKER;
-          }
+          // Generate visually animated news video explanation
+          const result = await generateVideo(genId);
+          slot = result === "__VIDEO_ERROR__" ? ERROR_CARD_MARKER : { ...result, mode: m };
         } else {
           // Generate text cards for learn/entertain modes
           const text = await streamSingleCard(genId);
@@ -590,22 +586,13 @@ export default function HomePageClient({ initialTrends = [] }) {
       
       let settled;
       if (bootMode === "news") {
-        // For news mode, fetch articles once and distribute them
-        const newsResult = await Promise.allSettled([fetchNewsArticles(genId)]);
-        if (newsResult[0].status === "fulfilled") {
-          const articles = newsResult[0].value;
-          if (Array.isArray(articles)) {
-            // Take first 3 articles for initial feed
-            settled = articles.slice(0, 3).map((article) => ({
-              status: "fulfilled",
-              value: article,
-            }));
-          } else {
-            settled = [{ status: "rejected", value: ERROR_CARD_MARKER }];
-          }
-        } else {
-          settled = [{ status: "rejected", value: ERROR_CARD_MARKER }];
-        }
+        // For news mode, generate 3 initial video explainer cards
+        const results = await Promise.allSettled([
+          generateVideo(genId),
+          generateVideo(genId),
+          generateVideo(genId)
+        ]);
+        settled = results;
       } else {
         // For learn/entertain modes, generate 3 text cards
         // Use Promise.allSettled to get results as they complete

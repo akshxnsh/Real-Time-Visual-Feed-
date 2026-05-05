@@ -43,8 +43,8 @@ router.post('/generate', async (req, res) => {
     return res.status(400).json({ error: 'topic is required' })
   }
 
-  if (!['learn', 'entertain'].includes(mode)) {
-    return res.status(400).json({ error: 'mode must be "learn" or "entertain"' })
+  if (!['learn', 'entertain', 'news'].includes(mode)) {
+    return res.status(400).json({ error: 'mode must be "learn", "entertain" or "news"' })
   }
 
   // Detect user country from IP
@@ -57,11 +57,22 @@ router.post('/generate', async (req, res) => {
   console.log(`Request from IP: ${ip} → ${countryCode}`)
 
   try {
+    let newsArticle = null;
+    if (mode === 'news') {
+      const { fetchBreakingNews } = await import('../../../services/news.js');
+      const articles = await fetchBreakingNews('breaking', countryCode);
+      if (articles && articles.length > 0) {
+        newsArticle = articles[0]; // Pick top story
+        console.log(`📰 Selected news for video: ${newsArticle.title}`);
+      }
+    }
+
     const { jobId, endpoint } = await generateVideoJob(
       topic,
       mode,
       sentimentProfile,
-      countryCode
+      countryCode,
+      newsArticle
     )
 
     jobEndpoints[jobId] = endpoint;

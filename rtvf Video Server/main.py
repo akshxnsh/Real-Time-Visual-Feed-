@@ -28,8 +28,9 @@ app.add_middleware(
 class GenerateRequest(BaseModel):
     prompt: str
     mode: str = "learn"
-    topic: str = ""          # ← CHANGE 2: add topic
-    user_region: str = "US"  # ← CHANGE 2: add user_region
+    topic: str = ""
+    user_region: str = "US"
+    news_article: dict = None
 
 @app.get("/health")
 def health():
@@ -45,7 +46,8 @@ async def generate(req: GenerateRequest):
         base_prompt=req.prompt,
         topic=req.topic,
         user_region=req.user_region,
-        mode=req.mode
+        mode=req.mode,
+        news_article=req.news_article
     )
 
     asyncio.create_task(run_generation(job_id, enriched))
