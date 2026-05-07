@@ -89,7 +89,7 @@ export default function VideoCard({
     setReplays((prev) => prev + 1);
   };
 
-  const modeLabel = mode === "learn" ? "📚 Learn" : "🎬 Entertain";
+  const modeLabel = mode === "learn" ? "Learn" : "Entertain";
   const modeColor = mode === "learn" ? "learn-badge" : "entertain-badge";
 
   return (
@@ -97,7 +97,7 @@ export default function VideoCard({
       {/* Trending Badge */}
       {showTrendingBadge && (
         <div className="trending-badge">
-          <span className="trend-icon">🔥</span> TRENDING
+          TRENDING
         </div>
       )}
 

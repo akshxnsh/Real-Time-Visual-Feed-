@@ -28,13 +28,15 @@ if (!process.env.GROQ_API_KEY) {
 }
 
 // Check for video generation environment variables
+// Dynamic GPU routing is managed by the MCP agent (IO_NET_API_KEY).
+// Static endpoint env vars are optional fallbacks for cold starts.
 const hasVideoConfig =
-  process.env.IO_NET_ENDPOINT_US;
+  process.env.IO_NET_API_KEY || process.env.IO_NET_ENDPOINT_US;
 if (hasVideoConfig) {
-  console.log("✅ Video generation configured");
+  console.log("✅ Video generation configured (MCP agent or static endpoint)");
 } else {
   console.warn(
-    "⚠️  Video generation not configured. Video endpoints disabled."
+    "⚠️  Video generation not configured. Set IO_NET_API_KEY to enable dynamic GPU routing."
   );
 }
 
@@ -280,8 +282,16 @@ app.post("/api/feed/generate", async (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 RTVLF API running on http://localhost:${PORT}`);
   console.log(`📡 Feed endpoint: POST http://localhost:${PORT}/api/feed/generate`);
   console.log(`📈 Trending: GET http://localhost:${PORT}/api/trending`);
+
+  // Start MCP GPU fleet manager in the background
+  try {
+    const { start: startMcpAgent } = await import('../../services/agents/mcpAgent.js');
+    await startMcpAgent();
+  } catch (err) {
+    console.error('❌ MCP agent failed to start:', err.message);
+  }
 });

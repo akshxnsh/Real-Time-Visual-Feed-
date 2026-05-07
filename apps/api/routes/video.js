@@ -10,6 +10,7 @@
 import express from 'express'
 import geoip from 'geoip-lite'
 import { generateVideoJob, pollJobStatus } from '../../../services/video.js'
+import { ping as pingActivity, countryToRegion } from '../../../services/activityTracker.js'
 
 const router = express.Router()
 
@@ -55,6 +56,9 @@ router.post('/generate', async (req, res) => {
   const countryCode = geo?.country || 'US'
 
   console.log(`Request from IP: ${ip} → ${countryCode}`)
+
+  // Signal activity so MCP agent knows this region needs a GPU container
+  pingActivity(countryToRegion(countryCode))
 
   try {
     let newsArticle = null;

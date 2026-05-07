@@ -1,34 +1,17 @@
 // Using global fetch (Node 18+)
 
-const IO_NET_CLUSTERS = {
-  // Asia + India → India node
-  IN: process.env.IO_NET_ENDPOINT_IN,
-  SG: process.env.IO_NET_ENDPOINT_IN,
-  JP: process.env.IO_NET_ENDPOINT_IN,
-  KR: process.env.IO_NET_ENDPOINT_IN,
-  PK: process.env.IO_NET_ENDPOINT_IN,
-  BD: process.env.IO_NET_ENDPOINT_IN,
-  LK: process.env.IO_NET_ENDPOINT_IN,
-  NP: process.env.IO_NET_ENDPOINT_IN,
-  AE: process.env.IO_NET_ENDPOINT_IN,
-  SA: process.env.IO_NET_ENDPOINT_IN,
-
-  // Americas + Europe + Rest → US node
-  US: process.env.IO_NET_ENDPOINT_US,
-  CA: process.env.IO_NET_ENDPOINT_US,
-  GB: process.env.IO_NET_ENDPOINT_US,
-  DE: process.env.IO_NET_ENDPOINT_US,
-  FR: process.env.IO_NET_ENDPOINT_US,
-  BR: process.env.IO_NET_ENDPOINT_US,
-  AU: process.env.IO_NET_ENDPOINT_US,
-  MX: process.env.IO_NET_ENDPOINT_US,
-  NG: process.env.IO_NET_ENDPOINT_US,
-  ZA: process.env.IO_NET_ENDPOINT_US,
-};
+import { getEndpoint, countryToRegion } from './activityTracker.js';
 
 function getNearestEndpoint(countryCode) {
-  return IO_NET_CLUSTERS[countryCode]
-      || process.env.IO_NET_ENDPOINT_US;  // default fallback
+  const region = countryToRegion(countryCode);
+  // Live dynamic endpoint from MCP agent routing table
+  const live = getEndpoint(region);
+  if (live) return live;
+
+  // Fallback to static env vars if MCP agent has not provisioned a container yet
+  // (covers cold start, disabled agent, or missing IO_NET_API_KEY)
+  if (region === 'IN') return process.env.IO_NET_ENDPOINT_IN || null;
+  return process.env.IO_NET_ENDPOINT_US || null;
 }
 
 /**
@@ -46,9 +29,9 @@ export async function generateVideoJob(topic, mode, sentimentProfile, countryCod
     ? `Create a visually animated news explanation video about: ${newsArticle.title}`
     : `Create a high-quality, engaging video about ${topic}`;
 
-  // Log routing as requested
-  const region = Object.keys(IO_NET_CLUSTERS).find(key => IO_NET_CLUSTERS[key] === endpoint) || 'US';
-  console.log(`Routing ${countryCode} → ${endpoint === process.env.IO_NET_ENDPOINT_IN ? 'IO_NET_ENDPOINT_IN' : 'IO_NET_ENDPOINT_US'}`);
+  // Log routing
+  const region = countryToRegion(countryCode);
+  console.log(`Routing ${countryCode} → ${region} → ${endpoint}`);
 
   const response = await fetch(`${endpoint}generate`, {
     method: 'POST',
