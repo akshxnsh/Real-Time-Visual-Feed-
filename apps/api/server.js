@@ -41,7 +41,7 @@ if (hasVideoConfig) {
 }
 
 // Use dynamic import to load modules AFTER env vars are loaded
-const { generateCard } = await import("../../services/llm.js");
+const { generateCard, generateTrendingTopics } = await import("../../services/llm.js");
 const { fetchBreakingNews, searchNews } = await import("../../services/news.js");
 const videoRouter = await import("./routes/video.js");
 
@@ -57,72 +57,36 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-/**
- * Extract trending topics from breaking news
- * Analyzes news titles to identify frequently mentioned topics
- * @returns {Promise<Array>} - Array of trending topics with metadata
- */
-async function extractTrendingTopics() {
-  try {
-    const { fetchBreakingNews } = await import("../../services/news.js");
-    
-    // Fetch breaking news from multiple categories
-    const categories = ["breaking", "business", "science", "sports", "entertainment"];
-    const allArticles = [];
-    
-    // Helper to wait N ms
-    function delay(ms) { return new Promise(res => setTimeout(res, ms)); }
-    for (const [i, category] of categories.entries()) {
-      try {
-        if (i > 0) await delay(1200); // Wait 1.2s between requests
-        const articles = await fetchBreakingNews(category, "us");
-        allArticles.push(...articles);
-      } catch (e) {
-        console.warn(`Failed to fetch ${category} news:`, e.message);
-      }
-    }
-
-    if (allArticles.length === 0) {
-      console.warn("No articles found for trending extraction");
-      return [];
-    }
-
-    const { extractTrendsWithGroq } = await import("../../services/llm.js");
-    const trending = await extractTrendsWithGroq(allArticles);
-    
-    console.log(`✅ Extracted ${trending.length} trending topics using Groq`);
-    return trending;
-  } catch (error) {
-    console.error("Failed to extract trending topics:", error.message);
-    return [];
-  }
-}
-
-// Cache trending topics for 5 minutes to avoid excessive API calls
-let trendingCache = [];
-let trendingCacheTime = 0;
+// Cache trending topics per country for 5 minutes to avoid excessive API calls
+// Key: countryName (lowercase), Value: { topics, time }
+const trendingCache = {};
 const TRENDING_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 app.get("/api/trending", async (req, res) => {
   try {
-    // Return cached trends if still valid
+    // Sanitize country param — letters, spaces, hyphens, apostrophes only
+    const rawCountry = typeof req.query.country === "string" ? req.query.country : "";
+    const country = rawCountry.replace(/[^a-zA-Z\s\-']/g, "").trim().slice(0, 60) || "the world";
+    const cacheKey = country.toLowerCase();
+
+    // Return cached trends for this country if still valid
     const now = Date.now();
-    if (trendingCache.length > 0 && (now - trendingCacheTime) < TRENDING_CACHE_TTL) {
-      return res.json({ topics: trendingCache, cached: true });
+    const cached = trendingCache[cacheKey];
+    if (cached && now - cached.time < TRENDING_CACHE_TTL) {
+      return res.json({ topics: cached.topics, cached: true, country });
     }
 
-    // Fetch fresh trending topics
-    const trends = await extractTrendingTopics();
-    
+    // Generate fresh trending topics directly via Groq (no external news API)
+    const trends = await generateTrendingTopics(country);
+
     if (trends.length === 0) {
-      return res.json({ topics: [], error: "Could not extract trends from news" });
+      return res.json({ topics: [], error: "Could not generate trending topics" });
     }
 
-    // Update cache
-    trendingCache = trends;
-    trendingCacheTime = now;
+    // Update per-country cache
+    trendingCache[cacheKey] = { topics: trends, time: now };
 
-    res.json({ topics: trends, cached: false });
+    res.json({ topics: trends, cached: false, country });
   } catch (error) {
     console.error("Trending endpoint error:", error);
     res.status(500).json({ error: "Failed to fetch trending topics" });

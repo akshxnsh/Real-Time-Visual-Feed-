@@ -160,6 +160,9 @@ export default function HomePageClient({ initialTrends = [] }) {
   const [trendingLoading, setTrendingLoading] = useState(
     () => !Array.isArray(initialTrends) || initialTrends.length === 0
   );
+  // User's detected country name (e.g. "India", "United States") — used to personalise trends
+  const [userCountry, setUserCountry] = useState("the world");
+  const userCountryRef = useRef("the world");
 
   const [exploredList, setExploredList] = useState([]);
   const [taglineIndex, setTaglineIndex] = useState(0);
@@ -194,6 +197,7 @@ export default function HomePageClient({ initialTrends = [] }) {
   likedRecordsRef.current = likedRecords;
   isTrendingSessionRef.current = isTrendingSession;
   sentimentProfileRef.current = sentimentProfile;
+  userCountryRef.current = userCountry;
 
   const { data: session } = useSession();
 
@@ -266,12 +270,36 @@ export default function HomePageClient({ initialTrends = [] }) {
     saveProfile(sentimentProfile);
   }, [sentimentProfile]);
 
+  // Detect user's country once on mount via free IP geolocation (no API key required)
+  useEffect(() => {
+    const detect = async () => {
+      try {
+        const res = await fetch("https://ipapi.co/country_name/", { cache: "force-cache" });
+        if (res.ok) {
+          const name = (await res.text()).trim();
+          // Only accept alphabetic country names to prevent injection
+          if (name && /^[a-zA-Z\s\-']{2,60}$/.test(name)) {
+            setUserCountry(name);
+            userCountryRef.current = name;
+          }
+        }
+      } catch {
+        /* fall through — keeps default "the world" */
+      }
+    };
+    detect();
+  }, []);
+
   useEffect(() => {
     const fetchTrending = async (showFlash) => {
       try {
         setTrendingFading(true);
         await new Promise((r) => setTimeout(r, 120));
-        const res = await fetch(`${API_BASE}/api/trending`, { cache: "no-store" });
+        const country = userCountryRef.current;
+        const res = await fetch(
+          `${API_BASE}/api/trending?country=${encodeURIComponent(country)}`,
+          { cache: "no-store" }
+        );
         if (!res.ok) throw new Error("trends failed");
         const data = await res.json();
         
@@ -306,7 +334,7 @@ export default function HomePageClient({ initialTrends = [] }) {
     fetchTrending(false);
     const id = window.setInterval(() => fetchTrending(true), 5 * 60 * 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [userCountry]); // re-fetch when country resolves from IP detection
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1137,8 +1165,10 @@ export default function HomePageClient({ initialTrends = [] }) {
             ☰
           </button>
           <div className="header-logo-wrap">
-            <img src="/rtvf-logo.svg" alt="RTVF" width={36} height={36} className="logo" decoding="async" />
-            <span className="logo-fallback-inline" style={{ marginLeft: 8, fontWeight: 800, fontSize: 20, color: '#7c6ff7', letterSpacing: '0.08em' }}>RTVF</span>
+            <span className="blink-logo">
+              <span className="blink-dots" aria-hidden>●●</span>
+              <span className="blink-wordmark">Blink</span>
+            </span>
           </div>
           <div className="header-right">
             {headerSavedBtn}

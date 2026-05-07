@@ -11,7 +11,14 @@ const client = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
+// Separate client for trends generation — uses its own API key so it doesn't
+// compete with card generation quota.
+const trendsClient = new Groq({
+  apiKey: process.env.GROQ_TRENDS_API_KEY || process.env.GROQ_API_KEY,
+});
+
 console.log("✅ Groq client initialized:", !!client);
+console.log("✅ Groq trends client initialized:", !!trendsClient);
 
 /**
  * Generate a single feed card using Groq's llama-3.3-70b-versatile model.
@@ -104,59 +111,69 @@ Topic history (do not repeat these concepts): ${historyText}`;
 }
 
 /**
- * Extract trending topics from a list of news articles using Groq.
- * @param {Array} articles - Array of news article objects containing titles
- * @returns {Promise<Array>} - Array of trending topic objects
+ * Generate 6 trending topics directly via Groq — no external news API needed.
+ * Groq picks diverse, interesting topics relevant to the given country.
+ * Each call produces fresh variety thanks to temperature 0.9.
+ *
+ * @param {string} [countryName="the world"] - Country name to tailor trends for (e.g. "India", "United Kingdom")
+ * @returns {Promise<Array<{id,topic,emoji,category,exploring}>>}
  */
-export async function extractTrendsWithGroq(articles) {
-  if (!articles || articles.length === 0) return [];
-  
-  // Extract just the titles to save tokens
-  const headlines = articles
-    .map(a => a.title)
-    .filter(Boolean)
-    .slice(0, 40) // Limit to top 40 headlines to avoid context window limits
-    .join("\n");
-    
-  const systemPrompt = `You are a trend analysis engine. Your job is to read a list of breaking news headlines and extract the 6 most interesting, overarching trending topics.
-Return ONLY a valid JSON object with a single key "trends" containing an array of objects. Do not include any conversational text.
-Each object in the "trends" array must match this exact structure:
-{
-  "topic": "Specific Topic Name (e.g. OpenAI GPT-5, not just AI)",
-  "emoji": "🔥",
-  "category": "tech" (choose one: breaking, business, science, sports, entertainment, health, tech, world),
-  "exploring": 45000 (a random integer between 20000 and 80000 to simulate search volume)
-}`;
+export async function generateTrendingTopics(countryName = "the world") {
+  // Sanitize: strip anything that isn't letters, spaces, hyphens, or apostrophes
+  const safeCountry = String(countryName).replace(/[^a-zA-Z\s\-']/g, "").trim().slice(0, 60) || "the world";
 
-  const userPrompt = `Here are the latest headlines:\n\n${headlines}`;
+  // Inject today's date so the model never produces outdated events (e.g. past seasons/years)
+  const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+  const systemPrompt = `You are a trend curator for a real-time visual feed app. Today's date is ${today}. Generate exactly 6 diverse, interesting trending topics that people in ${safeCountry} would want to explore right now.
+
+Return ONLY a valid JSON object with a single key "trends" containing an array of exactly 6 objects. No conversational text, no markdown.
+Each object must have exactly these fields:
+{
+  "topic": "Specific, vivid topic name — be precise (e.g. 'Quantum Supremacy Race', not just 'Quantum')",
+  "emoji": "<single most fitting emoji>",
+  "category": "<one of: breaking, business, science, sports, entertainment, health, tech, world>",
+  "exploring": <integer between 20000 and 95000>
+}
+
+Rules:
+- Today is ${today} — all topics must be relevant to this specific point in time. Never reference past years' events (e.g. do not say "IPL 2024" if the current year is 2026).
+- Tailor topics to what is culturally and currently relevant in ${safeCountry}
+- Cover at least 4 different categories across the 6 topics
+- Mix locally specific topics with globally relevant ones
+- Vary the specificity: mix broad (Space Exploration) and specific (James Webb Exoplanet Find)
+- No duplicate categories unless unavoidable
+- exploring values must be realistic and varied (not all the same number)`;
+
+  const userPrompt = `Today is ${today}. Generate 6 trending topics for people in ${safeCountry} right now. Return only the JSON object.`;
 
   try {
-    const response = await client.chat.completions.create({
+    const response = await trendsClient.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.2,
-      response_format: { type: "json_object" }, // Wait, response_format json_object requires the word "JSON" in prompt, which we have.
+      temperature: 0.9,
+      max_tokens: 500,
+      response_format: { type: "json_object" },
     });
 
-    const content = response.choices[0]?.message?.content || "[]";
-    
-    // Parse the JSON. Groq might return {"trends": [...]} if we force json_object, so handle both array and wrapper object.
+    const content = response.choices[0]?.message?.content || "{}";
     const parsed = JSON.parse(content);
-    let trendsList = Array.isArray(parsed) ? parsed : (parsed.trends || parsed.topics || Object.values(parsed)[0] || []);
-    
-    // Ensure it matches the expected format with IDs
-    return trendsList.map((item, idx) => ({
+    const trendsList = Array.isArray(parsed)
+      ? parsed
+      : parsed.trends || parsed.topics || Object.values(parsed)[0] || [];
+
+    return trendsList.slice(0, 6).map((item, idx) => ({
       id: idx + 1,
       topic: item.topic || "Unknown Topic",
-      emoji: item.emoji || "📰",
+      emoji: item.emoji || "🔥",
       category: item.category || "breaking",
-      exploring: item.exploring || Math.floor(Math.random() * 50000 + 20000)
+      exploring: item.exploring || Math.floor(Math.random() * 50000 + 20000),
     }));
   } catch (error) {
-    console.error("Groq trend extraction failed:", error);
+    console.error("Groq trending topic generation failed:", error);
     return [];
   }
 }
