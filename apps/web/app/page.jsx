@@ -1,5 +1,7 @@
+
 import HomePageClient from "@/components/HomePageClient";
 import { getTrendsPayload } from "@/lib/trends/getTrendsPayload";
+import ProtectedPage from "@/components/ProtectedPage";
 
 export default async function Page() {
   let initialTrends = [];
@@ -13,5 +15,9 @@ export default async function Page() {
     initialTrends = [];
   }
 
-  return <HomePageClient initialTrends={initialTrends} />;
+  return (
+    <ProtectedPage>
+      <HomePageClient initialTrends={initialTrends} />
+    </ProtectedPage>
+  );
 }

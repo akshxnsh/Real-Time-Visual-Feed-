@@ -1,4 +1,4 @@
-# RTVF — Real-Time Visual Feed
+﻿# RTVF — Real-Time Visual Feed
 
 An AI-powered infinite feed of short-form educational, entertaining, and live news content. The platform dynamically routes video generation tasks to regional GPU nodes (io.net) via MCP agent integration and provides a highly contextualized scroll experience powered by Groq and real-time news data.
 
@@ -21,14 +21,14 @@ An AI-powered infinite feed of short-form educational, entertaining, and live ne
 - **Video Backend:** Python + FastAPI + LTX-Video
 - **LLM Engine:** Groq API (`llama-3.3-70b-versatile`)
 - **News Engine:** NewsData API
-- **Storage:** Cloudflare R2
+- **Storage:** Supabase Storage (S3-compatible)
 - **Auth:** Firebase Auth + Firestore (planned)
 - **Infrastructure:** io.net GPU Cloud with MCP agent, Docker (brocode27/rtvf-video-server)
 
 ## Project Structure
 
 ```
-rtvlf/
+rtvf/
 ├── apps/
 │   ├── api/                 # Express backend (Routing, WebSockets, State Management)
 │   │   ├── routes/          # Video & News API Routes
@@ -43,7 +43,7 @@ rtvlf/
 │   ├── main.py              # FastAPI server handling LTX-Video jobs
 │   ├── context_agent.py     # Geographic trend enrichment (pytrends)
 │   ├── generator.py         # Video generation logic
-│   ├── storage.py           # Cloudflare R2 integration
+│   ├── storage.py           # Supabase Storage integration (S3-compatible)
 │   ├── Dockerfile           # Docker build for brocode27/rtvf-video-server
 │   └── requirements.txt
 ├── services/
@@ -93,11 +93,13 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 IO_NET_CONTAINER_IMAGE_US=brocode27/rtvf-video-server:latest
 IO_NET_CONTAINER_IMAGE_IN=brocode27/rtvf-video-server:latest
 
-# Cloudflare R2 Storage
-CLOUDFLARE_R2_ACCESS_KEY_ID=your_r2_access_key
-CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_r2_secret_key
-CLOUDFLARE_R2_ENDPOINT=your_r2_endpoint
-CLOUDFLARE_R2_BUCKET=your_r2_bucket
+# Supabase Storage (S3-compatible) — used by the Python video server
+STORAGE_ENDPOINT=https://<project-ref>.supabase.co/storage/v1/s3
+STORAGE_ACCESS_KEY=your_supabase_s3_access_key
+STORAGE_SECRET_KEY=your_supabase_s3_secret_key
+STORAGE_REGION=ap-northeast-2
+STORAGE_BUCKET=your_bucket_name
+SUPABASE_PROJECT_URL=https://<project-ref>.supabase.co
 
 # Firebase Auth (planned)
 FIREBASE_API_KEY=your_firebase_api_key
@@ -136,8 +138,8 @@ The UI's trending chips are powered entirely by live data. The Node backend fetc
 ### Geographic Node Routing
 Video requests hit the Express backend first. The `services/video.js` module looks at the user's `timezone` or `countryCode` and dynamically routes the request via MCP agent to either the US GPU node or the India GPU node. The backend maps the resulting `jobId` to the specific node in memory so that subsequent polling requests query the correct physical machine.
 
-### Cloudflare R2 Storage
-Generated videos are stored in Cloudflare R2 for efficient, global distribution with low latency.
+### Supabase Storage
+Generated videos are uploaded to Supabase Storage via its S3-compatible API. Public URLs are constructed as `{SUPABASE_PROJECT_URL}/storage/v1/object/public/{bucket}/{job_id}.mp4` and returned directly to the frontend feed.
 
 ---
 

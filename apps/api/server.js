@@ -1,5 +1,5 @@
-/**
- * RTVLF Backend API Server
+﻿/**
+ * RTVF Backend API Server
  * Express server with SSE streaming for real-time feed card generation.
  */
 
@@ -70,8 +70,11 @@ async function extractTrendingTopics() {
     const categories = ["breaking", "business", "science", "sports", "entertainment"];
     const allArticles = [];
     
-    for (const category of categories) {
+    // Helper to wait N ms
+    function delay(ms) { return new Promise(res => setTimeout(res, ms)); }
+    for (const [i, category] of categories.entries()) {
       try {
+        if (i > 0) await delay(1200); // Wait 1.2s between requests
         const articles = await fetchBreakingNews(category, "us");
         allArticles.push(...articles);
       } catch (e) {
@@ -283,7 +286,7 @@ app.post("/api/feed/generate", async (req, res) => {
 
 // Start server
 app.listen(PORT, async () => {
-  console.log(`🚀 RTVLF API running on http://localhost:${PORT}`);
+  console.log(`🚀 RTVF API running on http://localhost:${PORT}`);
   console.log(`📡 Feed endpoint: POST http://localhost:${PORT}/api/feed/generate`);
   console.log(`📈 Trending: GET http://localhost:${PORT}/api/trending`);
 

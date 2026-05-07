@@ -1,7 +1,7 @@
 {
-  "name": "rtvlf-api",
+  "name": "rtvf-api",
   "version": "1.0.0",
-  "description": "RTVLF backend — Express server with Groq-powered feed generation",
+  "description": "RTVF backend — Express server with Groq-powered feed generation",
   "type": "module",
   "main": "server.js",
   "scripts": {

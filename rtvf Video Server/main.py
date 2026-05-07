@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import uuid
 import traceback
 from contextlib import asynccontextmanager
@@ -13,7 +13,7 @@ jobs: dict = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 RTVLF Video Server ready")
+    print("🚀 RTVF Video Server ready")
     yield
 
 app = FastAPI(lifespan=lifespan)

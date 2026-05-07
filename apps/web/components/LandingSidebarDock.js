@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   useCallback,
@@ -8,9 +8,9 @@ import {
 } from "react";
 import "./LandingSidebarDock.css";
 
-const LS_PINNED = "rtvlf_sidebar_pinned";
-const LS_WIDTH = "rtvlf_sidebar_width";
-const LS_TIP = "rtvlf_sidebar_tip_shown";
+const LS_PINNED = "rtvf_sidebar_pinned";
+const LS_WIDTH = "rtvf_sidebar_width";
+const LS_TIP = "rtvf_sidebar_tip_shown";
 
 function loadBoolLs(key) {
   if (typeof window === "undefined") return false;

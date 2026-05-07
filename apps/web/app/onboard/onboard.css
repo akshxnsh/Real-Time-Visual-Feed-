@@ -1,0 +1,213 @@
+.onboard-logo-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+  margin-top: -0.5rem;
+}
+
+.onboard-logo-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.onboard-logo-dot--learn {
+  background: #4fc3f7;
+}
+.onboard-logo-dot--entertain {
+  background: #ff6b8a;
+}
+.onboard-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary, #0a0a0f);
+  transition: background 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+
+.onboard-card {
+  background: var(--bg-secondary, #181824);
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  padding: 2.5rem 2rem 2rem 2rem;
+  max-width: 420px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: fadeInUp 0.7s cubic-bezier(0.4,0,0.2,1);
+  border: 1.5px solid #232336;
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow 0.3s cubic-bezier(0.4,0,0.2,1);
+}
+
+.onboard-card::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 36px;
+  background: linear-gradient(180deg, rgba(24,24,36,0) 0%, #181824 100%);
+  pointer-events: none;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(32px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.onboard-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary, #f0f0f5);
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.onboard-desc {
+  color: var(--text-secondary, #8888aa);
+  font-size: 1rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  font-weight: 500;
+}
+
+.onboard-desc-secondary {
+  color: #6e6e8e;
+  font-size: 0.97em;
+  font-weight: 400;
+}
+
+.onboard-fact {
+  margin-top: 2.2rem;
+  font-size: 0.98rem;
+  color: #b3b3d1;
+  background: #20203a;
+  border-radius: 8px;
+  padding: 0.7em 1.1em;
+  box-shadow: 0 2px 12px 0 rgba(60,60,100,0.08);
+  text-align: center;
+  min-height: 44px;
+  max-width: 340px;
+  width: 100%;
+  font-style: italic;
+  letter-spacing: 0.01em;
+  transition: background 0.2s;
+}
+
+.onboard-fact-label {
+  color: #7c6ff7;
+  font-weight: 600;
+  font-style: normal;
+  margin-right: 0.4em;
+}
+
+.onboard-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.onboard-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.onboard-topic-btn {
+  background: #232336;
+  color: #f0f0f5;
+  border: 1px solid #35355a;
+  border-radius: 8px;
+  padding: 0.5rem 1.1rem;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, border 0.18s;
+  outline: none;
+}
+
+.onboard-topic-btn--selected {
+  background: #7c6ff7;
+  color: #fff;
+  border-color: #7c6ff7;
+}
+
+.onboard-topic-btn:focus {
+  box-shadow: 0 0 0 2px #7c6ff7;
+}
+
+.onboard-custom-topic-row {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  margin-bottom: 1.2rem;
+  margin-top: 0.2rem;
+  justify-content: center;
+}
+
+.onboard-custom-topic-input {
+  flex: 1 1 0;
+  background: #232336;
+  color: #f0f0f5;
+  border: 1px solid #35355a;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  font-weight: 500;
+  outline: none;
+  transition: border 0.18s;
+}
+.onboard-custom-topic-input:focus {
+  border-color: #7c6ff7;
+}
+
+.onboard-custom-topic-add-btn {
+  background: #7c6ff7;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1.1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+.onboard-custom-topic-add-btn:disabled {
+  background: #35355a;
+  color: #8888aa;
+  cursor: not-allowed;
+}
+
+.onboard-submit-btn {
+  width: 100%;
+  background: #7c6ff7;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.85rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 0.5rem;
+  transition: background 0.18s, color 0.18s;
+}
+
+.onboard-submit-btn:disabled {
+  background: #35355a;
+  color: #8888aa;
+  cursor: not-allowed;
+}

@@ -38,6 +38,24 @@ function BookmarkIcon({ filled }) {
   );
 }
 
+function ThumbsDownIcon({ filled }) {
+  return (
+    <svg
+      className="card-action-icon"
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.75"
+      aria-hidden
+    >
+      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z" />
+      <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
+    </svg>
+  );
+}
+
 export default function FeedCard({
   text,
   cardNumber,
@@ -46,15 +64,18 @@ export default function FeedCard({
   scrollRootRef,
   showTrendingBadge,
   isLiked = false,
+  isDisliked = false,
   isSaved = false,
   likeCount = 0,
   onToggleLike,
+  onToggleDislike,
   onToggleSave,
   onCardLeave,
 }) {
   const rootRef = useRef(null);
   const [inView, setInView] = useState(false);
   const [likeAnimating, setLikeAnimating] = useState(false);
+  const [dislikeAnimating, setDislikeAnimating] = useState(false);
   const [saveAnimating, setSaveAnimating] = useState(false);
   
   // Signal tracking refs
@@ -63,6 +84,7 @@ export default function FeedCard({
     replayCount: 0,
     scrolledAwayAt: 0,
     liked: false,
+    disliked: false,
     saved: false,
     shared: false,
   });
@@ -100,9 +122,20 @@ export default function FeedCard({
     e.stopPropagation();
     setLikeAnimating(true);
     window.setTimeout(() => setLikeAnimating(false), 320);
-    // Track explicit like signal
+    // Track explicit like signal; liking clears dislike
     signalTracker.current.liked = !isLiked;
+    if (!isLiked) signalTracker.current.disliked = false;
     onToggleLike();
+  };
+
+  const handleDislike = (e) => {
+    e.stopPropagation();
+    setDislikeAnimating(true);
+    window.setTimeout(() => setDislikeAnimating(false), 320);
+    // Track explicit dislike signal; disliking clears like
+    signalTracker.current.disliked = !isDisliked;
+    if (!isDisliked) signalTracker.current.liked = false;
+    onToggleDislike();
   };
 
   const handleSave = (e) => {
@@ -162,6 +195,15 @@ export default function FeedCard({
         <span className="card-actions__count" aria-live="polite">
           {likeCount}
         </span>
+        <button
+          type="button"
+          className={`card-actions__dislike ${isDisliked ? "card-actions__dislike--on" : ""} ${dislikeAnimating ? "card-actions__dislike--burst" : ""}`}
+          onClick={handleDislike}
+          aria-pressed={isDisliked}
+          aria-label={isDisliked ? "Remove dislike" : "Dislike"}
+        >
+          <ThumbsDownIcon filled={isDisliked} />
+        </button>
         <button
           type="button"
           className={`card-actions__save ${isSaved ? "card-actions__save--on" : ""} ${saveAnimating ? "card-actions__save--pop" : ""}`}

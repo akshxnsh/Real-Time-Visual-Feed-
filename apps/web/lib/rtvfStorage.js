@@ -1,9 +1,10 @@
-/**
+﻿/**
  * localStorage persistence for likes/saves — keys and entry shape are stable for Phase 2.
  */
 
-export const STORAGE_LIKED = "rtvlf_liked";
-export const STORAGE_SAVED = "rtvlf_saved";
+export const STORAGE_LIKED = "rtvf_liked";
+export const STORAGE_DISLIKED = "rtvf_disliked";
+export const STORAGE_SAVED = "rtvf_saved";
 
 /** @typedef {{ id: number, topic: string, mode: string, text: string, timestamp: number }} RtvlfCardRecord */
 
@@ -25,7 +26,7 @@ export function saveCardRecords(key, records) {
   try {
     window.localStorage.setItem(key, JSON.stringify(records));
   } catch (e) {
-    console.warn("rtvlf storage write failed", e);
+    console.warn("rtvf storage write failed", e);
   }
 }
 

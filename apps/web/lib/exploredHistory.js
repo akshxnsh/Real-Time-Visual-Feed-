@@ -1,9 +1,9 @@
-/**
- * Recently explored topics — key rtvlf_history, shape [{ topic, mode, timestamp }].
+﻿/**
+ * Recently explored topics — key rtvf_history, shape [{ topic, mode, timestamp }].
  * Max 10 entries, newest first, dedupe by topic (moves to top on repeat).
  */
 
-export const STORAGE_EXPLORED = "rtvlf_history";
+export const STORAGE_EXPLORED = "rtvf_history";
 
 /** @typedef {{ topic: string, mode: string, timestamp: number }} ExploredEntry */
 
@@ -37,7 +37,7 @@ export function saveExplored(entries) {
       JSON.stringify(entries.slice(0, 10))
     );
   } catch (e) {
-    console.warn("rtvlf_history save failed", e);
+    console.warn("rtvf_history save failed", e);
   }
 }
 

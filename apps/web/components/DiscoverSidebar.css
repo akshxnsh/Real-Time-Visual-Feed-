@@ -1,20 +1,22 @@
 .discover-sidebar__inner {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 28px;
   min-height: min-content;
+  padding-bottom: 16px;
 }
 
 .discover-section__label {
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 2px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
   text-transform: uppercase;
   color: var(--text-secondary);
-  margin: 0 0 14px;
+  margin: 0 0 12px;
   line-height: 1.3;
 }
 
+/* Popular */
 .discover-popular {
   list-style: none;
   margin: 0;
@@ -22,7 +24,7 @@
 }
 
 .discover-popular li:not(:last-child) {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .discover-popular__row {
@@ -30,65 +32,154 @@
   display: grid;
   grid-template-columns: 28px 1fr auto;
   align-items: center;
-  gap: 8px;
-  padding: 12px 8px;
+  gap: 10px;
+  padding: 11px 8px;
   margin: 0 -8px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: inherit;
   cursor: pointer;
   text-align: left;
-  transition: background-color 0.18s ease;
+  transition: background-color 0.16s ease;
 }
 
 .discover-popular__row:hover {
-  background: rgba(124, 111, 247, 0.08);
+  background: rgba(124, 111, 247, 0.09);
 }
 
 .discover-popular__rank {
-  font-size: 12px;
+  font-size: 11px;
   font-family: ui-monospace, monospace;
   color: var(--accent);
+  font-weight: 700;
+}
+
+.discover-popular__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .discover-popular__name {
-  font-size: 14px;
+  font-size: 13.5px;
   color: #ffffff;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.discover-popular__tag {
+  font-size: 10px;
+  color: var(--text-secondary);
   font-weight: 500;
+  letter-spacing: 0.04em;
 }
 
 .discover-popular__arrow {
-  font-size: 12px;
+  font-size: 16px;
   color: var(--text-secondary);
+  font-weight: 300;
+  transition: color 0.16s;
 }
 
+.discover-popular__row:hover .discover-popular__arrow {
+  color: var(--accent);
+}
+
+/* Curated picks */
+.discover-curated {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.discover-curated__row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 8px;
+  margin: 0 -8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.16s ease;
+}
+
+.discover-curated__row:hover {
+  background: rgba(79, 195, 247, 0.07);
+}
+
+.discover-curated__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4fc3f7;
+  flex-shrink: 0;
+}
+
+.discover-curated__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.discover-curated__name {
+  font-size: 13px;
+  color: #e0e0f0;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.discover-curated__tag {
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+
+/* Categories */
 .discover-cats {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .discover-cat-chip {
   height: 28px;
-  padding: 0 10px;
-  border-radius: 8px;
+  padding: 0 12px;
+  border-radius: 20px;
   font-size: 11px;
   font-weight: 600;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   color: var(--text-secondary);
   cursor: pointer;
   transition:
-    border-color 0.2s ease,
-    color 0.2s ease;
+    border-color 0.18s ease,
+    color 0.18s ease,
+    background 0.18s ease;
+  letter-spacing: 0.02em;
 }
 
 .discover-cat-chip:hover {
   border-color: var(--accent);
   color: var(--accent);
+  background: rgba(124, 111, 247, 0.08);
 }
 
+/* Recently explored */
 .discover-section--recent {
   margin-top: auto;
   padding-top: 8px;
@@ -96,7 +187,7 @@
 
 .discover-recent__empty {
   font-size: 12px;
-  color: rgba(136, 136, 170, 0.65);
+  color: rgba(136, 136, 170, 0.55);
   line-height: 1.5;
   margin: 0;
 }
@@ -107,35 +198,38 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .discover-recent__row {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 8px;
+  gap: 10px;
+  padding: 9px 8px;
   margin: 0 -8px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   cursor: pointer;
   text-align: left;
-  transition: background-color 0.18s ease;
+  transition: background-color 0.16s ease;
 }
 
 .discover-recent__row:hover {
   background: rgba(124, 111, 247, 0.08);
 }
 
-.discover-recent__clock {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.discover-recent__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   flex-shrink: 0;
-  opacity: 0.9;
 }
+
+.discover-recent__dot--learn { background: #4fc3f7; }
+.discover-recent__dot--entertain { background: #ff6b8a; }
+.discover-recent__dot--news { background: #ff3c3c; }
 
 .discover-recent__topic {
   flex: 1;
@@ -150,10 +244,23 @@
 .discover-recent__mode {
   font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.06em;
-  padding: 3px 6px;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  color: var(--accent);
+  letter-spacing: 0.07em;
+  padding: 3px 7px;
+  border-radius: 20px;
   flex-shrink: 0;
+}
+
+.discover-recent__mode--learn {
+  background: rgba(79, 195, 247, 0.12);
+  color: #4fc3f7;
+}
+
+.discover-recent__mode--entertain {
+  background: rgba(255, 107, 138, 0.12);
+  color: #ff6b8a;
+}
+
+.discover-recent__mode--news {
+  background: rgba(255, 60, 60, 0.12);
+  color: #ff6060;
 }

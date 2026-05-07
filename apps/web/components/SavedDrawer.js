@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import "./SavedDrawer.css";
 
-/** @param {{ open: boolean, onClose: () => void, saved: import("../lib/rtvlfStorage").RtvlfCardRecord[], onUnsave: (rec: import("../lib/rtvlfStorage").RtvlfCardRecord) => void }} props */
+/** @param {{ open: boolean, onClose: () => void, saved: import("../lib/rtvfStorage").RtvlfCardRecord[], onUnsave: (rec: import("../lib/rtvfStorage").RtvlfCardRecord) => void }} props */
 export default function SavedDrawer({ open, onClose, saved, onUnsave }) {
   return (
     <>

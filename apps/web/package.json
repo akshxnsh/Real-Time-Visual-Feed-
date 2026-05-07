@@ -1,8 +1,8 @@
 {
-  "name": "rtvlf-web",
+  "name": "rtvf-web",
   "version": "1.0.0",
   "type": "module",
-  "description": "RTVLF frontend — Next.js 14 infinite feed of AI-generated cards",
+  "description": "RTVF frontend — Next.js 14 infinite feed of AI-generated cards",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "next": "^14.0.0",
+    "next-auth": "^5.0.0-beta.31",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

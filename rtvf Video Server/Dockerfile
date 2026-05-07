@@ -12,10 +12,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-COPY main.py generator.py storage.py context_agent.py ./  # ← CHANGE 1
+COPY main.py generator.py storage.py context_agent.py ./
 
 EXPOSE 8000
 
-ENV NEWS_API_KEY="pub_b72d3e5def0f468fad31c80b2b76b8ad"
+# Runtime secrets must be passed as environment variables at container start.
+# Do NOT hardcode API keys here — pass them via the caas_deploy_container env field.
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

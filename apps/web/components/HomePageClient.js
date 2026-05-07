@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   useState,
@@ -8,6 +8,7 @@ import {
   useMemo,
 } from "react";
 import FeedCard from "../components/FeedCard";
+import { signOut, useSession } from "next-auth/react";
 import NewsCard from "../../../components/NewsCard.jsx";
 import VideoCard from "../components/VideoCard";
 import LoadingScreen from "../components/LoadingScreen";
@@ -16,6 +17,7 @@ import SkeletonCard from "../components/SkeletonCard";
 import FeedBufferSkeleton from "../components/FeedBufferSkeleton";
 import ScrollIndicator from "../components/ScrollIndicator";
 import ModeToggle from "../components/ModeToggle";
+
 import ModeDividerCard from "../components/ModeDividerCard";
 import SavedDrawer from "../components/SavedDrawer";
 import TrendingSection from "../components/TrendingSection";
@@ -25,11 +27,12 @@ import { SUGGESTION_TOPICS } from "../data/suggestionTopics";
 import { loadExplored, pushExplored } from "../lib/exploredHistory";
 import {
   STORAGE_LIKED,
+  STORAGE_DISLIKED,
   STORAGE_SAVED,
   loadCardRecords,
   saveCardRecords,
   recordsMatch,
-} from "../lib/rtvlfStorage";
+} from "../lib/rtvfStorage";
 import { mapTrendRecordsToDisplay } from "../lib/trends/mapTrendRecords";
 import {
   loadProfile,
@@ -47,30 +50,30 @@ const MODE_DIVIDER_MARKER = "__MODE_DIVIDER__";
 const HERO_EXIT_MS = 550;
 
 const QUICK_CHIPS_LEARN = [
-  { label: "🧠 Psychology", value: "Psychology" },
-  { label: "🔬 Science", value: "Science" },
-  { label: "🏛️ Ancient Rome", value: "Ancient Rome" },
-  { label: "💻 AI", value: "Artificial intelligence" },
-  { label: "🌌 Space", value: "Space exploration" },
-  { label: "📐 Mathematics", value: "Mathematics" },
+  { label: "Psychology", value: "Psychology" },
+  { label: "Science", value: "Science" },
+  { label: "Ancient Rome", value: "Ancient Rome" },
+  { label: "AI", value: "Artificial intelligence" },
+  { label: "Space", value: "Space exploration" },
+  { label: "Mathematics", value: "Mathematics" },
 ];
 
 const QUICK_CHIPS_ENTERTAIN = [
-  { label: "🎬 Cinema Secrets", value: "Classic cinema behind the scenes" },
-  { label: "👽 Conspiracies", value: "Famous conspiracy theories" },
-  { label: "💀 Dark History", value: "Dark history facts" },
-  { label: "🤯 Mind Tricks", value: "Cognitive biases and illusions" },
-  { label: "🎭 Celebrity Fails", value: "Celebrity scandal history" },
-  { label: "🌊 Ocean Horrors", value: "Deep ocean mysteries" },
+  { label: "Cinema Secrets", value: "Classic cinema behind the scenes" },
+  { label: "Conspiracies", value: "Famous conspiracy theories" },
+  { label: "Dark History", value: "Dark history facts" },
+  { label: "Mind Tricks", value: "Cognitive biases and illusions" },
+  { label: "Celebrity Fails", value: "Celebrity scandal history" },
+  { label: "Ocean Horrors", value: "Deep ocean mysteries" },
 ];
 
 const QUICK_CHIPS_NEWS = [
-  { label: "🔥 Breaking News", value: "breaking" },
-  { label: "💼 Business", value: "business" },
-  { label: "🔬 Science", value: "science" },
-  { label: "🏥 Health", value: "health" },
-  { label: "⚽ Sports", value: "sports" },
-  { label: "🎬 Entertainment", value: "entertainment" },
+  { label: "Breaking News", value: "breaking" },
+  { label: "Business", value: "business" },
+  { label: "Science", value: "science" },
+  { label: "Health", value: "health" },
+  { label: "Sports", value: "sports" },
+  { label: "Entertainment", value: "entertainment" },
 ];
 
 function isCardPayload(item) {
@@ -118,10 +121,10 @@ function dividerTargetMode(item) {
 }
 
 const CYCLING_TAGLINES = [
-  "🚀 Updated in real time",
-  "🧠 Adapts to what you like",
-  "🌍 Contextual to your world",
-  "⚡ Powered by distributed AI",
+  "Updated in real time",
+  "Adapts to what you like",
+  "Contextual to your world",
+  "Powered by distributed AI",
 ];
 
 export default function HomePageClient({ initialTrends = [] }) {
@@ -144,6 +147,7 @@ export default function HomePageClient({ initialTrends = [] }) {
 
   // Always start empty for SSR/hydration match; hydrate from storage in useEffect below.
   const [likedRecords, setLikedRecords] = useState([]);
+  const [dislikedRecords, setDislikedRecords] = useState([]);
   const [savedRecords, setSavedRecords] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isTrendingSession, setIsTrendingSession] = useState(false);
@@ -191,6 +195,18 @@ export default function HomePageClient({ initialTrends = [] }) {
   isTrendingSessionRef.current = isTrendingSession;
   sentimentProfileRef.current = sentimentProfile;
 
+  const { data: session } = useSession();
+
+  const userGreeting = useMemo(() => {
+    if (!session?.user?.name) return null;
+    const hour = new Date().getHours();
+    let timeGreeting;
+    if (hour < 12) timeGreeting = "Good morning";
+    else if (hour < 18) timeGreeting = "Good afternoon";
+    else timeGreeting = "Good evening";
+    return `${timeGreeting}, ${session.user.name}!`;
+  }, [session]);
+
   const feedRef = useRef(null);
   const searchWrapRef = useRef(null);
   const inputRef = useRef(null);
@@ -211,10 +227,12 @@ export default function HomePageClient({ initialTrends = [] }) {
   useEffect(() => {
     try {
       setLikedRecords(loadCardRecords(STORAGE_LIKED));
+      setDislikedRecords(loadCardRecords(STORAGE_DISLIKED));
       setSavedRecords(loadCardRecords(STORAGE_SAVED));
       setExploredList(loadExplored());
     } catch {
       setLikedRecords([]);
+      setDislikedRecords([]);
       setSavedRecords([]);
       setExploredList([]);
     }
@@ -234,6 +252,10 @@ export default function HomePageClient({ initialTrends = [] }) {
   useEffect(() => {
     saveCardRecords(STORAGE_LIKED, likedRecords);
   }, [likedRecords]);
+
+  useEffect(() => {
+    saveCardRecords(STORAGE_DISLIKED, dislikedRecords);
+  }, [dislikedRecords]);
 
   useEffect(() => {
     saveCardRecords(STORAGE_SAVED, savedRecords);
@@ -741,6 +763,7 @@ export default function HomePageClient({ initialTrends = [] }) {
           completionRate: signals.watchedDuration !== undefined ? signals.watchedDuration : signals.completionRate || 0,
           replayCount: signals.replays || 0,
           liked: signals.liked || false,
+          disliked: signals.disliked || false,
           saved: signals.saved || false,
           shared: signals.shared || false,
           scrolledAwayAt: signals.scrolledAwayAt || 0.5,
@@ -900,6 +923,30 @@ export default function HomePageClient({ initialTrends = [] }) {
       if (prev.some(match)) return prev.filter((r) => !match(r));
       return [...prev, rec];
     });
+    // Liking clears any dislike on the same card
+    setDislikedRecords((prev) =>
+      prev.filter((r) => !(r.topic === rec.topic && r.mode === rec.mode && r.text === rec.text))
+    );
+  }, []);
+
+  const toggleDislike = useCallback((cardIndex, text, cardMode) => {
+    const rec = {
+      id: cardIndex,
+      topic: topicRef.current,
+      mode: cardMode,
+      text,
+      timestamp: Date.now(),
+    };
+    setDislikedRecords((prev) => {
+      const match = (r) =>
+        r.topic === rec.topic && r.mode === rec.mode && r.text === rec.text;
+      if (prev.some(match)) return prev.filter((r) => !match(r));
+      return [...prev, rec];
+    });
+    // Disliking clears any like on the same card
+    setLikedRecords((prev) =>
+      prev.filter((r) => !(r.topic === rec.topic && r.mode === rec.mode && r.text === rec.text))
+    );
   }, []);
 
   const toggleSave = useCallback((cardIndex, text, cardMode) => {
@@ -989,6 +1036,11 @@ export default function HomePageClient({ initialTrends = [] }) {
     ).length;
 
   const isTextLiked = (text, cardMode) => likeCountForText(text, cardMode) > 0;
+
+  const isTextDisliked = (text, cardMode) =>
+    dislikedRecords.some(
+      (r) => r.topic === topic && r.mode === cardMode && r.text === text
+    );
 
   const isTextSaved = (text, cardMode) =>
     savedRecords.some(
@@ -1085,25 +1137,20 @@ export default function HomePageClient({ initialTrends = [] }) {
             ☰
           </button>
           <div className="header-logo-wrap">
-            <img
-              src="/logo.png"
-              alt="RTVLF"
-              width={140}
-              height={34}
-              className="logo"
-              decoding="async"
-              fetchPriority="high"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-                const next = e.currentTarget.nextElementSibling;
-                if (next instanceof HTMLElement) next.style.display = "block";
-              }}
-            />
-            <span className="logo-fallback-inline">RTVLF</span>
+            <img src="/rtvf-logo.svg" alt="RTVF" width={36} height={36} className="logo" decoding="async" />
+            <span className="logo-fallback-inline" style={{ marginLeft: 8, fontWeight: 800, fontSize: 20, color: '#7c6ff7', letterSpacing: '0.08em' }}>RTVF</span>
           </div>
           <div className="header-right">
             {headerSavedBtn}
             <ModeToggle mode={mode} onModeChange={handleModeChange} disabled={isLoading} />
+            <button
+              className="header-account-btn"
+              onClick={() => signOut({ callbackUrl: "/auth/signin" })}
+              style={{ marginLeft: 12 }}
+              title="Logout or switch account"
+            >
+              Logout / Switch Account
+            </button>
           </div>
         </header>
       )}
@@ -1154,6 +1201,13 @@ export default function HomePageClient({ initialTrends = [] }) {
           <div className="header-right header-right--compact">
             {headerSavedBtn}
             <ModeToggle mode={mode} onModeChange={handleModeChange} disabled={isLoading} />
+            <button
+              className="header-account-btn"
+              onClick={() => signOut({ callbackUrl: "/auth/signin" })}
+              title="Logout or switch account"
+            >
+              Logout / Switch Account
+            </button>
           </div>
         </header>
       )}
@@ -1194,6 +1248,11 @@ export default function HomePageClient({ initialTrends = [] }) {
           <div className="landing-main">
             <div className="landing-main-inner">
               <div className="hero-heading-wrap">
+                {userGreeting && (
+                  <div className="user-greeting">
+                    {userGreeting}
+                  </div>
+                )}
                 <h1 className="hero-line hero-line--1">
                   What are you{" "}
                   <span
@@ -1326,65 +1385,53 @@ export default function HomePageClient({ initialTrends = [] }) {
               </div>
             )}
 
-            {showQuickChips && (
-              <>
-                <div className="hero-line hero-line--5 trending-wrap">
-                  <TrendingSection
-                    items={trendingDisplay}
-                    onSelectTopic={startFromTrendingTopic}
-                    showUpdatedFlash={showTrendingUpdated}
-                    fading={trendingFading}
-                    seeAllHref="/trends"
-                    isLoading={trendingLoading}
-                    sectionLabel={
-                      mode === "entertain"
-                        ? "🔥 Blowing Up Right Now"
-                        : "🔥 Trending Now"
-                    }
-                  />
+            {/* Trending topics always visible in hero section */}
+            <div className="hero-line hero-line--5 trending-wrap">
+              <TrendingSection
+                items={trendingDisplay}
+                onSelectTopic={startFromTrendingTopic}
+                showUpdatedFlash={showTrendingUpdated}
+                fading={trendingFading}
+                seeAllHref="/trends"
+                isLoading={trendingLoading}
+                sectionLabel={
+                  mode === "entertain"
+                    ? "Trending Now"
+                    : "Trending Now"
+                }
+              />
+            </div>
+            <section
+              className="landing-how-it-works hero-line hero-line--6"
+              aria-label="How it works"
+            >
+              <div className="landing-how-it-works__grid">
+                <div className="landing-how-it-works__col">
+                  <h3 className="landing-how-it-works__title">
+                    Real-time generation
+                  </h3>
+                  <p className="landing-how-it-works__desc">
+                    Every card is created fresh, just for you
+                  </p>
                 </div>
-                <section
-                  className="landing-how-it-works hero-line hero-line--6"
-                  aria-label="How it works"
-                >
-                  <div className="landing-how-it-works__grid">
-                    <div className="landing-how-it-works__col">
-                      <span className="landing-how-it-works__emoji" aria-hidden>
-                        ⚡
-                      </span>
-                      <h3 className="landing-how-it-works__title">
-                        Real-time generation
-                      </h3>
-                      <p className="landing-how-it-works__desc">
-                        Every card is created fresh, just for you
-                      </p>
-                    </div>
-                    <div className="landing-how-it-works__col">
-                      <span className="landing-how-it-works__emoji" aria-hidden>
-                        🧠
-                      </span>
-                      <h3 className="landing-how-it-works__title">
-                        Learns your taste
-                      </h3>
-                      <p className="landing-how-it-works__desc">
-                        The more you scroll, the smarter it gets
-                      </p>
-                    </div>
-                    <div className="landing-how-it-works__col">
-                      <span className="landing-how-it-works__emoji" aria-hidden>
-                        🌍
-                      </span>
-                      <h3 className="landing-how-it-works__title">
-                        Context-aware
-                      </h3>
-                      <p className="landing-how-it-works__desc">
-                        Content shaped by what&apos;s happening in your world
-                      </p>
-                    </div>
-                  </div>
-                </section>
-              </>
-            )}
+                <div className="landing-how-it-works__col">
+                  <h3 className="landing-how-it-works__title">
+                    Learns your taste
+                  </h3>
+                  <p className="landing-how-it-works__desc">
+                    The more you scroll, the smarter it gets
+                  </p>
+                </div>
+                <div className="landing-how-it-works__col">
+                  <h3 className="landing-how-it-works__title">
+                    Context-aware
+                  </h3>
+                  <p className="landing-how-it-works__desc">
+                    Content shaped by what&apos;s happening in your world
+                  </p>
+                </div>
+              </div>
+            </section>
             </div>
           </div>
           </div>
@@ -1507,9 +1554,11 @@ export default function HomePageClient({ initialTrends = [] }) {
                       scrollRootRef={feedRef}
                       showTrendingBadge={isTrendingSession}
                       isLiked={isTextLiked(cardBody, cardMode)}
+                      isDisliked={isTextDisliked(cardBody, cardMode)}
                       isSaved={isTextSaved(cardBody, cardMode)}
                       likeCount={likeCountForText(cardBody, cardMode)}
                       onToggleLike={() => toggleLike(idx, cardBody, cardMode)}
+                      onToggleDislike={() => toggleDislike(idx, cardBody, cardMode)}
                       onToggleSave={() => toggleSave(idx, cardBody, cardMode)}
                       onCardLeave={handleCardLeave}
                     />

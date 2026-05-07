@@ -3,22 +3,33 @@
 import "./DiscoverSidebar.css";
 
 const POPULAR = [
-  "Black Holes",
-  "Fall of Rome",
-  "Quantum Computing",
-  "Ocean Depths",
-  "AI Consciousness",
+  { name: "Black Holes", tag: "Science" },
+  { name: "Fall of Rome", tag: "History" },
+  { name: "Quantum Computing", tag: "Tech" },
+  { name: "Ocean Depths", tag: "Nature" },
+  { name: "AI Consciousness", tag: "Tech" },
 ];
 
 const CATEGORIES = [
-  "Science",
-  "History",
-  "Tech",
-  "Culture",
-  "Space",
-  "Psychology",
-  "Nature",
-  "Mystery",
+  { label: "Science", icon: "⬡" },
+  { label: "History", icon: "⬡" },
+  { label: "Tech", icon: "⬡" },
+  { label: "Culture", icon: "⬡" },
+  { label: "Space", icon: "⬡" },
+  { label: "Psychology", icon: "⬡" },
+  { label: "Nature", icon: "⬡" },
+  { label: "Mystery", icon: "⬡" },
+  { label: "Politics", icon: "⬡" },
+  { label: "Health", icon: "⬡" },
+  { label: "Economy", icon: "⬡" },
+  { label: "Philosophy", icon: "⬡" },
+];
+
+const CURATED = [
+  { name: "How the Internet Works", tag: "Tech" },
+  { name: "The French Revolution", tag: "History" },
+  { name: "CRISPR Gene Editing", tag: "Science" },
+  { name: "Stoicism in Modern Life", tag: "Philosophy" },
 ];
 
 export default function DiscoverSidebar({
@@ -28,27 +39,50 @@ export default function DiscoverSidebar({
   onExploredSelect,
 }) {
   const recent = Array.isArray(exploredEntries)
-    ? exploredEntries.slice(0, 3)
+    ? exploredEntries.slice(0, 5)
     : [];
 
   return (
     <div className="discover-sidebar__inner">
+
       <div className="discover-section">
         <h3 className="discover-section__label">Popular right now</h3>
         <ul className="discover-popular">
-          {POPULAR.map((name, i) => (
-            <li key={name}>
+          {POPULAR.map((item, i) => (
+            <li key={item.name}>
               <button
                 type="button"
                 className="discover-popular__row"
-                onClick={() => onPopularSelect(name)}
+                onClick={() => onPopularSelect(item.name)}
               >
                 <span className="discover-popular__rank">
                   {String(i + 1).padStart(2, "0")}
                 </span>
-                <span className="discover-popular__name">{name}</span>
-                <span className="discover-popular__arrow" aria-hidden>
-                  →
+                <span className="discover-popular__meta">
+                  <span className="discover-popular__name">{item.name}</span>
+                  <span className="discover-popular__tag">{item.tag}</span>
+                </span>
+                <span className="discover-popular__arrow" aria-hidden>›</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="discover-section">
+        <h3 className="discover-section__label">Curated picks</h3>
+        <ul className="discover-curated">
+          {CURATED.map((item) => (
+            <li key={item.name}>
+              <button
+                type="button"
+                className="discover-curated__row"
+                onClick={() => onPopularSelect(item.name)}
+              >
+                <span className="discover-curated__dot" />
+                <span className="discover-curated__meta">
+                  <span className="discover-curated__name">{item.name}</span>
+                  <span className="discover-curated__tag">{item.tag}</span>
                 </span>
               </button>
             </li>
@@ -61,12 +95,12 @@ export default function DiscoverSidebar({
         <div className="discover-cats">
           {CATEGORIES.map((cat) => (
             <button
-              key={cat}
+              key={cat.label}
               type="button"
               className="discover-cat-chip"
-              onClick={() => onCategorySelect(cat)}
+              onClick={() => onCategorySelect(cat.label)}
             >
-              {cat}
+              {cat.label}
             </button>
           ))}
         </div>
@@ -87,25 +121,10 @@ export default function DiscoverSidebar({
                   className="discover-recent__row"
                   onClick={() => onExploredSelect(entry)}
                 >
-                  <span className="discover-recent__clock" aria-hidden>
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#8888AA"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <polyline points="12 6 12 12 16 14" />
-                    </svg>
-                  </span>
+                  <span className={`discover-recent__dot discover-recent__dot--${entry.mode}`} aria-hidden />
                   <span className="discover-recent__topic">{entry.topic}</span>
-                  <span
-                    className={`discover-recent__mode discover-recent__mode--${entry.mode}`}
-                  >
-                    {entry.mode === "learn" ? "LEARN" : "ENTERTAIN"}
+                  <span className={`discover-recent__mode discover-recent__mode--${entry.mode}`}>
+                    {entry.mode === "learn" ? "LEARN" : entry.mode === "news" ? "NEWS" : "ENTERTAIN"}
                   </span>
                 </button>
               </li>

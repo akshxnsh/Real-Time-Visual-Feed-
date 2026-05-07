@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Sentiment & Preference Tracking System
  * 
  * This is the ONLY place in the codebase where sentiment profile logic lives.
@@ -19,6 +19,7 @@ const SIGNAL_WEIGHTS = {
   scrolledEarly: -0.6,    // left before 20%
   scrolledMid: -0.2,      // left at 20-50%
   liked: 0.9,
+  disliked: -1.0,         // strongest negative signal
   saved: 1.0,             // strongest positive signal
   shared: 0.95,
 };
@@ -29,6 +30,7 @@ const NEWS_SIGNAL_WEIGHTS = {
   readHalf: 0.4,          // read 1-3 seconds
   scrolledAwayEarly: -0.4, // left before 1 second
   liked: 0.85,
+  disliked: -0.9,         // strong negative signal for news
   saved: 0.95,            // high weight for news save
   shared: 0.9,
   clickedLink: 1.0,       // strongest signal - actual engagement
@@ -108,6 +110,7 @@ const defaultProfile = {
   totalVideosWatched: 0,
   totalNewsArticlesRead: 0,
   totalLikes: 0,
+  totalDislikes: 0,
   totalSaves: 0,
   lastUpdated: null,
   profileConfidence: 0.0, // 0.0 to 1.0
@@ -126,7 +129,7 @@ export function loadProfile() {
   }
 
   try {
-    const stored = localStorage.getItem("rtvlf_sentiment_profile");
+    const stored = localStorage.getItem("rtvf_sentiment_profile");
     return stored ? JSON.parse(stored) : { ...defaultProfile };
   } catch (e) {
     console.warn("Could not load sentiment profile, using default:", e);
@@ -143,7 +146,7 @@ export function saveProfile(profile) {
   if (typeof window === "undefined") return;
 
   try {
-    localStorage.setItem("rtvlf_sentiment_profile", JSON.stringify(profile));
+    localStorage.setItem("rtvf_sentiment_profile", JSON.stringify(profile));
   } catch (e) {
     console.warn("Could not save sentiment profile:", e);
   }
@@ -181,6 +184,7 @@ export function calculateEngagementScore(signals) {
 
   // Explicit interaction signals
   if (signals.liked) score += SIGNAL_WEIGHTS.liked;
+  if (signals.disliked) score += SIGNAL_WEIGHTS.disliked;
   if (signals.saved) score += SIGNAL_WEIGHTS.saved;
   if (signals.shared) score += SIGNAL_WEIGHTS.shared;
 
@@ -212,6 +216,7 @@ export function calculateNewsEngagementScore(signals) {
 
   // Explicit interaction signals
   if (signals.liked) score += NEWS_SIGNAL_WEIGHTS.liked;
+  if (signals.disliked) score += NEWS_SIGNAL_WEIGHTS.disliked;
   if (signals.saved) score += NEWS_SIGNAL_WEIGHTS.saved;
   if (signals.shared) score += NEWS_SIGNAL_WEIGHTS.shared;
 
@@ -265,6 +270,7 @@ export function updateProfile(currentProfile, contentMeta, signals) {
     // Update metadata
     profile.totalNewsArticlesRead++;
     if (signals.liked) profile.totalLikes++;
+    if (signals.disliked) profile.totalDislikes = (profile.totalDislikes || 0) + 1;
     if (signals.saved) profile.totalSaves++;
     profile.lastUpdated = Date.now();
 
@@ -354,6 +360,7 @@ export function updateProfile(currentProfile, contentMeta, signals) {
   // Update metadata
   profile.totalVideosWatched++;
   if (signals.liked) profile.totalLikes++;
+  if (signals.disliked) profile.totalDislikes = (profile.totalDislikes || 0) + 1;
   if (signals.saved) profile.totalSaves++;
   profile.lastUpdated = Date.now();
 
@@ -410,7 +417,7 @@ export function getPacingPreference(profile) {
  */
 export function resetProfile() {
   if (typeof window !== "undefined") {
-    localStorage.removeItem("rtvlf_sentiment_profile");
+    localStorage.removeItem("rtvf_sentiment_profile");
   }
   return { ...defaultProfile };
 }

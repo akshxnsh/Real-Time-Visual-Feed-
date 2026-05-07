@@ -1,4 +1,4 @@
-/**
+﻿/**
  * MCP Agent — Dynamic GPU Fleet Manager
  *
  * Connects to io.net Agent Cloud MCP server and manages GPU containers
@@ -25,7 +25,7 @@ import {
   setStatus,
   setDeployment,
   clearDeployment,
-} from './activityTracker.js';
+} from '../activityTracker.js';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -193,7 +193,7 @@ async function provisionContainer(region) {
 
   try {
     const result = await callMcpTool('caas_deploy_container', {
-      name: `rtvlf-${region.toLowerCase()}-${Date.now()}`,
+      name: `rtvf-${region.toLowerCase()}-${Date.now()}`,
       image,
       gpu_type: REGION_GPU_TYPE[region],
       tags: { region },

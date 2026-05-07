@@ -10,6 +10,9 @@ build/
 .idea/
 .vscode/
 
+# Runtime data — keep .gitkeep, ignore generated files
+data/*.json
+
 # Logs
 logs
 *.log
