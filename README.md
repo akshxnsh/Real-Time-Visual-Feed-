@@ -1,4 +1,4 @@
-# RTVLF — Real-Time Visual Learning Feed
+# RTVF — Real-Time Visual Feed
 
 An AI-powered infinite feed of short-form educational, entertaining, and live news content. The platform dynamically routes video generation tasks to regional GPU nodes (io.net) via MCP agent integration and provides a highly contextualized scroll experience powered by Groq and real-time news data.
 
