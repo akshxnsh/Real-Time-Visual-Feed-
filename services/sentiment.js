@@ -411,6 +411,119 @@ export function getPacingPreference(profile) {
 }
 
 /**
+ * Seed an initial sentiment profile from onboarding selections.
+ * Called once at the end of onboarding — gives the EMA algorithm
+ * a head-start instead of starting completely neutral.
+ *
+ * @param {string[]} selectedTopics  - Topics picked on onboard step 1 (e.g. ["AI","Space"])
+ * @param {string[]} selectedGenres  - Genres picked on onboard step 2 (e.g. ["Documentary","Thriller"])
+ * @returns {object} - Seeded profile (caller is responsible for saving it)
+ */
+export function seedProfile(selectedTopics = [], selectedGenres = []) {
+  // Deep clone defaultProfile — we never mutate the module-level default
+  const profile = JSON.parse(JSON.stringify(defaultProfile));
+
+  // ── Topic → profile.topics mapping ──────────────────────────────────────
+  const TOPIC_MAP = {
+    "AI":            ["technology"],
+    "Technology":    ["technology"],
+    "Programming":   ["technology"],
+    "Science":       ["science"],
+    "Mathematics":   ["science"],
+    "Space":         ["space"],
+    "Psychology":    ["psychology"],
+    "Philosophy":    ["psychology"],
+    "Cinema":        ["entertainment"],
+    "Music":         ["entertainment", "culture"],
+    "Art":           ["entertainment", "culture"],
+    "Gaming":        ["entertainment"],
+    "Sports":        ["sports"],
+    "History":       ["history"],
+    "Culture":       ["culture"],
+    "Food":          ["culture"],
+    "Travel":        ["culture"],
+    "Finance":       ["finance"],
+    "Health":        ["health"],
+    "Nature":        ["nature"],
+    "World News":    [], // handled separately below
+  };
+
+  selectedTopics.forEach((t) => {
+    const keys = TOPIC_MAP[t];
+    if (keys) {
+      keys.forEach((k) => {
+        if (profile.topics[k] !== undefined) {
+          profile.topics[k] = Math.min(1.0, profile.topics[k] + 0.2);
+        }
+      });
+    }
+    // World News boosts news categories
+    if (t === "World News") {
+      profile.newsCategories.world   = Math.min(1.0, profile.newsCategories.world   + 0.2);
+      profile.newsCategories.breaking = Math.min(1.0, profile.newsCategories.breaking + 0.15);
+    }
+  });
+
+  // ── Genre → profile.style / pacing mapping ──────────────────────────────
+  const GENRE_MAP = {
+    "Documentary": { "style.realistic": 0.25, "style.calm": 0.15, "style.educational": 0.15 },
+    "Educational": { "style.educational": 0.3,  "style.calm": 0.1 },
+    "Thriller":    { "style.dramatic": 0.25,    "pacing.fast": 0.2 },
+    "Comedy":      { "style.calm": 0.15,        "pacing.fast": 0.1 },
+    "Action":      { "style.dramatic": 0.3,     "pacing.fast": 0.3 },
+    "Mystery":     { "style.dramatic": 0.15,    "style.cinematic": 0.2 },
+    "Sci-Fi":      { "style.cinematic": 0.25,   "style.abstract": 0.15 },
+    "Nature":      { "style.calm": 0.25,        "style.realistic": 0.2 },
+    "Horror":      { "style.dramatic": 0.3,     "style.cinematic": 0.15 },
+    "Romance":     { "style.calm": 0.2,         "style.cinematic": 0.15 },
+    "History":     { "style.educational": 0.2,  "style.cinematic": 0.15 },
+    "Sports":      { "pacing.fast": 0.25,       "style.dramatic": 0.1 },
+  };
+
+  selectedGenres.forEach((g) => {
+    const boosts = GENRE_MAP[g];
+    if (!boosts) return;
+    Object.entries(boosts).forEach(([path, delta]) => {
+      const [section, key] = path.split(".");
+      if (profile[section] && profile[section][key] !== undefined) {
+        profile[section][key] = Math.min(1.0, profile[section][key] + delta);
+      }
+    });
+  });
+
+  profile.lastUpdated = Date.now();
+  return profile;
+}
+
+/**
+ * Map a free-form topic string to the relevant sentiment profile topic keys.
+ * Used when a card is saved to immediately boost the matching affinities.
+ * Returns an array of keys that exist in profile.topics.
+ * @param {string} topicStr - Raw topic text (e.g. "Bollywood Movies", "Space Exploration")
+ * @returns {string[]} - Matching keys from profile.topics
+ */
+export function topicToSentimentCategories(topicStr) {
+  if (!topicStr || typeof topicStr !== "string") return [];
+  const t = topicStr.toLowerCase();
+  const hits = new Set();
+
+  if (/\b(space|nasa|cosmos|galaxy|planet|orbit|rocket|astronaut|star|mars|moon|telescope)\b/.test(t)) hits.add("space");
+  if (/\b(history|historical|ancient|empire|war|civilization|medieval|roman|greek|dynasty|revolution)\b/.test(t)) hits.add("history");
+  if (/\b(tech|software|ai|artificial intelligence|machine learning|programming|code|developer|startup|app|digital|internet|chip|gpu|crypto|bitcoin)\b/.test(t)) hits.add("technology");
+  if (/\b(psychology|mind|behavior|cognitive|mental|emotion|brain|bias|therapy|personality|consciousness)\b/.test(t)) hits.add("psychology");
+  if (/\b(science|physics|chemistry|biology|quantum|research|experiment|discovery|genetics|molecule|atom)\b/.test(t)) hits.add("science");
+  if (/\b(culture|art|music|film|cinema|bollywood|hollywood|novel|book|literature|food|cuisine|tradition|language|festival|dance|theatre)\b/.test(t)) hits.add("culture");
+  if (/\b(nature|wildlife|animal|forest|ocean|climate|environment|plant|ecosystem|bird|insect|earth)\b/.test(t)) hits.add("nature");
+  if (/\b(sport|cricket|football|soccer|nba|nfl|tennis|golf|olympic|athlete|championship|league|match)\b/.test(t)) hits.add("sports");
+  if (/\b(entertainment|celebrity|movie|show|series|streaming|netflix|award|grammy|oscar|actor|actress|pop|concert)\b/.test(t)) hits.add("entertainment");
+  if (/\b(mystery|unsolved|conspiracy|crime|detective|thriller|haunted|paranormal|strange|unexplained)\b/.test(t)) hits.add("mystery");
+  if (/\b(finance|money|invest|stock|market|economy|trading|wealth|fund|bank|currency|tax|gdp)\b/.test(t)) hits.add("finance");
+  if (/\b(health|medicine|medical|nutrition|fitness|diet|disease|mental health|yoga|workout|wellness|vaccine|doctor)\b/.test(t)) hits.add("health");
+
+  return Array.from(hits);
+}
+
+/**
  * Reset sentiment profile to default
  * Used by debug panel only
  * @returns {object} - Fresh default profile

@@ -25,7 +25,9 @@ import {
   setStatus,
   setDeployment,
   clearDeployment,
+  getAgentContext,
 } from '../activityTracker.js';
+import Groq from 'groq-sdk';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -33,8 +35,6 @@ const MCP_SERVER_URL = 'https://mcp.io.solutions/mcp';
 const IONET_REST_BASE = 'https://api.io.solutions/api/v1';
 
 const POLL_INTERVAL_MS = 3 * 60 * 1000;   // 3 minutes
-const SOFT_THRESHOLD_MIN = 8;              // warn at 8 min idle
-const HARD_THRESHOLD_MIN = 10;            // teardown at 10 min idle
 
 // Map region → Docker image env var name
 const REGION_IMAGE_ENV = {
@@ -47,6 +47,47 @@ const REGION_GPU_TYPE = {
   US: process.env.IO_NET_GPU_TYPE_US || 'RTX4090',
   IN: process.env.IO_NET_GPU_TYPE_IN || 'RTX4090',
 };
+
+// ── Groq Agent client ─────────────────────────────────────────────────────────
+
+// Uses GROQ_AGENT_API_KEY if set, otherwise falls back to GROQ_API_KEY.
+// This keeps GPU management quota separate from card generation quota.
+let groqAgent = null;
+
+function getGroqAgent() {
+  if (groqAgent) return groqAgent;
+  const key = process.env.GROQ_AGENT_API_KEY || process.env.GROQ_API_KEY;
+  if (!key) return null;
+  groqAgent = new Groq({ apiKey: key });
+  return groqAgent;
+}
+
+// System prompt for the GPU fleet manager agent
+const AGENT_SYSTEM_PROMPT = `You are an autonomous GPU fleet manager for a real-time AI video generation platform.
+You manage Docker containers on io.net Cloud GPU nodes across two regions: US and IN.
+
+Your two goals (in order of priority):
+1. MINIMISE USER WAIT TIME — users should never wait for a cold container start
+2. MINIMISE IDLE GPU COST — containers running with no activity waste money
+
+HARD RULES (non-negotiable, always enforce first):
+- If status is "active" or "provisioning" and idleMinutes < 2 → KEEP (user is active)
+- If hasContainer is false and idleMinutes === 0 (just pinged) → PROVISION immediately
+- NEVER teardown a container with idleMinutes < 2
+
+OPTIMISATION RULES (apply when hard rules don't apply):
+- pActivityNow / pActivityNext are probabilities 0.0–1.0 of user activity in the current/next hour
+  - null means insufficient history (< 3 days) — treat as 0.5 (uncertain)
+- If pActivityNext > 0.6 AND hasContainer is false → PRE_PROVISION (spin up before users arrive)
+- If idleMinutes >= 10 AND pActivityNow < 0.3 AND pActivityNext < 0.3 → TEARDOWN
+- If idleMinutes >= 5 AND pActivityNow < 0.1 AND pActivityNext < 0.1 → TEARDOWN (dead zone, save cost)
+- If idleMinutes >= 10 AND (pActivityNow >= 0.3 OR pActivityNext >= 0.4) → KEEP (likely returning)
+- Otherwise → KEEP
+
+You will receive a JSON array of region context objects. For each region, respond with a JSON array of decisions.
+Each decision must have exactly: { "region": "US"|"IN", "action": "PROVISION"|"TEARDOWN"|"KEEP"|"PRE_PROVISION", "reason": "<one concise sentence>" }
+
+Return ONLY the JSON array. No prose, no markdown.`;
 
 // ── MCP HTTP+SSE transport helpers ───────────────────────────────────────────
 
@@ -283,7 +324,91 @@ function reconcileProvisioningContainers(deployments) {
 }
 
 /**
- * Single poll cycle — evaluate each region and take action.
+ * Ask the Groq agent what to do for each region given current context.
+ * Falls back to hard rules if Groq is unavailable.
+ * @param {object[]} contexts — one getAgentContext() result per region
+ * @returns {Promise<Array<{region, action, reason}>>}
+ */
+async function askAgent(contexts) {
+  const client = getGroqAgent();
+
+  if (!client) {
+    // No Groq key — fall back to simple hard rules
+    return contexts.map(ctx => {
+      if (ctx.idleMinutes < 2 || ctx.status === 'active') {
+        return { region: ctx.region, action: 'KEEP', reason: 'User active (fallback rules)' };
+      }
+      if (!ctx.hasContainer && ctx.idleMinutes === 0) {
+        return { region: ctx.region, action: 'PROVISION', reason: 'New activity detected (fallback rules)' };
+      }
+      if (ctx.idleMinutes >= 10) {
+        return { region: ctx.region, action: 'TEARDOWN', reason: 'Idle >10 min (fallback rules)' };
+      }
+      return { region: ctx.region, action: 'KEEP', reason: 'Within idle threshold (fallback rules)' };
+    });
+  }
+
+  try {
+    const response = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: AGENT_SYSTEM_PROMPT },
+        { role: 'user', content: JSON.stringify(contexts) },
+      ],
+      temperature: 0.1,   // low — deterministic infrastructure decisions
+      max_tokens: 300,
+      response_format: { type: 'json_object' },
+    });
+
+    const raw = response.choices[0]?.message?.content || '{}';
+    const parsed = JSON.parse(raw);
+
+    // Accept { decisions: [...] } or just [...]
+    const list = Array.isArray(parsed) ? parsed : (parsed.decisions || parsed.regions || Object.values(parsed)[0] || []);
+    return list;
+  } catch (err) {
+    console.error('❌ [MCP Agent] Groq decision failed, using fallback rules:', err.message);
+    // Fallback: keep everything to avoid accidental teardowns
+    return contexts.map(ctx => ({
+      region: ctx.region,
+      action: 'KEEP',
+      reason: 'Groq unavailable — conservative fallback',
+    }));
+  }
+}
+
+/**
+ * Execute a single agent decision for a region.
+ * @param {{ region: string, action: string, reason: string }} decision
+ */
+async function executeDecision(decision) {
+  const { region, action, reason } = decision;
+  const { endpoint, status } = getRegionState(region);
+  const hasContainer = !!(endpoint || status === 'provisioning');
+
+  console.log(`🤖 [MCP Agent] ${region} → ${action}: ${reason}`);
+
+  switch (action) {
+    case 'PROVISION':
+    case 'PRE_PROVISION':
+      if (!hasContainer) {
+        await provisionContainer(region);
+      }
+      break;
+    case 'TEARDOWN':
+      if (hasContainer) {
+        await teardownContainer(region);
+      }
+      break;
+    case 'KEEP':
+    default:
+      // Nothing to do
+      break;
+  }
+}
+
+/**
+ * Single poll cycle — collect context, ask Groq, execute decisions.
  */
 async function poll() {
   console.log('🔄 [MCP Agent] Polling regions...');
@@ -292,7 +417,6 @@ async function poll() {
   let deployments = [];
   try {
     const mcpResult = await callMcpTool('caas_list_deployments', {});
-    // Result shape varies — try to extract the array
     if (Array.isArray(mcpResult?.content)) {
       for (const block of mcpResult.content) {
         if (block.type === 'text') {
@@ -307,37 +431,19 @@ async function poll() {
     } else if (Array.isArray(mcpResult)) {
       deployments = mcpResult;
     }
-
     reconcileProvisioningContainers(deployments);
   } catch (err) {
     console.warn('⚠️  [MCP Agent] Could not list deployments:', err.message);
-    // Non-fatal — continue with local state
   }
 
-  for (const region of REGIONS) {
-    const idle = getIdleMinutes(region);
-    const { status, endpoint } = getRegionState(region);
+  // Build context for each region and ask the agent
+  const contexts = REGIONS.map(r => getAgentContext(r));
+  const decisions = await askAgent(contexts);
 
-    const hasContainer = !!endpoint || status === 'provisioning';
-    const isProvisioning = status === 'provisioning';
-
-    if (idle < SOFT_THRESHOLD_MIN) {
-      // Region is active
-      if (!hasContainer && !isProvisioning) {
-        await provisionContainer(region);
-      }
-    } else if (idle >= SOFT_THRESHOLD_MIN && idle < HARD_THRESHOLD_MIN) {
-      // Warning zone — log but don't act yet
-      if (status !== 'warning') {
-        setStatus(region, 'warning');
-        console.log(`⚠️  [MCP Agent] ${region} idle ${idle.toFixed(1)} min — teardown in ~${(HARD_THRESHOLD_MIN - idle).toFixed(1)} min`);
-      }
-    } else if (idle >= HARD_THRESHOLD_MIN) {
-      // Hard teardown
-      if (hasContainer) {
-        await teardownContainer(region);
-      }
-    }
+  // Execute each decision sequentially
+  for (const decision of decisions) {
+    if (!decision?.region || !decision?.action) continue;
+    await executeDecision(decision);
   }
 }
 

@@ -135,22 +135,25 @@
 
 .card-content {
   padding: 0 20px;
-  text-align: center;
-  line-height: 1.8;
-  font-size: clamp(18px, 2.5vw, 24px);
+  text-align: left;
+  line-height: 1.7;
+  font-size: clamp(11px, 1.3vw, 13px);
   font-weight: 400;
   color: var(--text-primary);
   z-index: 1;
+  overflow-y: auto;
 }
 
 .card--entertain .card-content {
-  line-height: 1.6;
-  font-size: clamp(20px, 2.8vw, 26px);
-  font-weight: 500;
+  line-height: 1.7;
+  font-size: clamp(11px, 1.3vw, 13px);
+  font-weight: 400;
 }
 
 .card-content p {
   margin: 0;
+  white-space: pre-wrap;
+  font-family: 'Courier New', Courier, monospace;
 }
 
 .card-trending-badge {

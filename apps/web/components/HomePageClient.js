@@ -38,6 +38,7 @@ import {
   loadProfile,
   saveProfile,
   updateProfile,
+  topicToSentimentCategories,
 } from "../../../services/sentiment.js";
 import "../app/page.css";
 
@@ -151,10 +152,36 @@ export default function HomePageClient({ initialTrends = [] }) {
   const [savedRecords, setSavedRecords] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isTrendingSession, setIsTrendingSession] = useState(false);
+  const [selectedTrendingTopics, setSelectedTrendingTopics] = useState([]);
 
-  const [trendingDisplay, setTrendingDisplay] = useState(() =>
-    mapTrendRecordsToDisplay(initialTrends)
-  );
+  // Full pool of 20 topics fetched once per session — never re-fetched
+  const allTrendingPoolRef = useRef([]);
+  // Window offset into the pool — advances every 10s to show a different set of 6
+  const trendWindowOffsetRef = useRef(0);
+
+  const [trendingDisplay, setTrendingDisplay] = useState(() => {
+    if (!Array.isArray(initialTrends) || initialTrends.length === 0) return [];
+    if (initialTrends[0]?.topic) {
+      return initialTrends.slice(0, 6).map((t, idx) => {
+        const exploring = t.exploring;
+        const label =
+          exploring >= 1_000_000
+            ? `${(exploring / 1_000_000).toFixed(1)}M people exploring`
+            : exploring >= 1000
+            ? `${(exploring / 1000).toFixed(1)}k people exploring`
+            : `${exploring} people exploring`;
+        return {
+          id: t.id || idx + 1,
+          topic: t.topic,
+          emoji: t.emoji || "🔥",
+          category: t.category || "breaking",
+          exploringLabel: label,
+        };
+      });
+    }
+    // Legacy Twitter/mock format: {name, tweetVolume, category, rank}
+    return mapTrendRecordsToDisplay(initialTrends);
+  });
   const [trendingFading, setTrendingFading] = useState(false);
   const [showTrendingUpdated, setShowTrendingUpdated] = useState(false);
   const [trendingLoading, setTrendingLoading] = useState(
@@ -189,6 +216,9 @@ export default function HomePageClient({ initialTrends = [] }) {
   const likedRecordsRef = useRef(likedRecords);
   const isTrendingSessionRef = useRef(isTrendingSession);
   const sentimentProfileRef = useRef(sentimentProfile);
+  const selectedTopicsRef = useRef(selectedTrendingTopics);
+  const topicRotationIdxRef = useRef(0);
+  const savedRecordsRef = useRef(savedRecords);
 
   topicRef.current = topic;
   historyRef.current = history;
@@ -198,6 +228,8 @@ export default function HomePageClient({ initialTrends = [] }) {
   isTrendingSessionRef.current = isTrendingSession;
   sentimentProfileRef.current = sentimentProfile;
   userCountryRef.current = userCountry;
+  selectedTopicsRef.current = selectedTrendingTopics;
+  savedRecordsRef.current = savedRecords;
 
   const { data: session } = useSession();
 
@@ -291,10 +323,52 @@ export default function HomePageClient({ initialTrends = [] }) {
   }, []);
 
   useEffect(() => {
-    const fetchTrending = async (showFlash) => {
+    // Normalise a raw Groq topic object into the display shape
+    const toDisplay = (t, idx) => {
+      const exploring = t.exploring || 0;
+      return {
+        id: t.id || idx + 1,
+        topic: t.topic,
+        emoji: t.emoji || "🔥",
+        category: t.category || "breaking",
+        exploringLabel:
+          exploring >= 1_000_000
+            ? `${(exploring / 1_000_000).toFixed(1)}M people exploring`
+            : exploring >= 1000
+            ? `${(exploring / 1000).toFixed(1)}k people exploring`
+            : `${exploring} people exploring`,
+      };
+    };
+
+    // Fisher-Yates in-place shuffle
+    const shuffle = (arr) => {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    };
+
+    // Advance to a fresh random set of 6 from the pool
+    const rotateWindow = (pool) => {
+      if (pool.length === 0) return;
+      // Pick 6 starting at current offset, then advance offset by 1 (not 6) for variety
+      const offset = trendWindowOffsetRef.current;
+      const slice = [];
+      for (let i = 0; i < Math.min(6, pool.length); i++) {
+        slice.push(pool[(offset + i) % pool.length]);
+      }
+      // Advance offset by a prime-ish step so we don't repeat the same window
+      trendWindowOffsetRef.current = (offset + 3) % pool.length;
+      setTrendingFading(true);
+      window.setTimeout(() => {
+        setTrendingDisplay(slice);
+        setTrendingFading(false);
+      }, 250);
+    };
+
+    const fetchOnce = async () => {
       try {
-        setTrendingFading(true);
-        await new Promise((r) => setTimeout(r, 120));
         const country = userCountryRef.current;
         const res = await fetch(
           `${API_BASE}/api/trending?country=${encodeURIComponent(country)}`,
@@ -302,28 +376,20 @@ export default function HomePageClient({ initialTrends = [] }) {
         );
         if (!res.ok) throw new Error("trends failed");
         const data = await res.json();
-        
-        // Map the Groq topics format to the display format
-        const list = Array.isArray(data?.topics) ? data.topics : [];
-        const displayList = list.slice(0, 6).map((t, idx) => {
-          let exploring = t.exploring;
-          if (exploring >= 1000) exploring = `${(exploring / 1000).toFixed(1)}k`;
-          return {
-            id: t.id || idx + 1,
-            topic: t.topic,
-            emoji: t.emoji || "🔥",
-            category: t.category || "breaking",
-            exploringLabel: `${exploring} people exploring`,
-          };
-        });
-        
-        setTrendingDisplay(displayList);
+
+        const raw = Array.isArray(data?.topics) ? data.topics : [];
+        if (raw.length === 0) throw new Error("empty");
+
+        // Build display pool, shuffle, store
+        const pool = shuffle(raw.map(toDisplay));
+        allTrendingPoolRef.current = pool;
+        trendWindowOffsetRef.current = 0;
+
+        // Show first window immediately
+        setTrendingDisplay(pool.slice(0, 6));
+        trendWindowOffsetRef.current = 6 % pool.length;
         setTrendingLoading(false);
         setTrendingFading(false);
-        if (showFlash) {
-          setShowTrendingUpdated(true);
-          window.setTimeout(() => setShowTrendingUpdated(false), 2200);
-        }
       } catch {
         setTrendingDisplay((prev) => (prev.length > 0 ? prev : []));
         setTrendingLoading(false);
@@ -331,10 +397,17 @@ export default function HomePageClient({ initialTrends = [] }) {
       }
     };
 
-    fetchTrending(false);
-    const id = window.setInterval(() => fetchTrending(true), 5 * 60 * 1000);
-    return () => window.clearInterval(id);
-  }, [userCountry]); // re-fetch when country resolves from IP detection
+    fetchOnce();
+
+    // Rotate visible chips every 10 seconds — no re-fetch, just slides the window
+    const rotateId = window.setInterval(() => {
+      const pool = allTrendingPoolRef.current;
+      if (pool.length >= 6) rotateWindow(pool);
+    }, 10_000);
+
+    return () => window.clearInterval(rotateId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userCountry]); // fetch once on mount + re-fetch if country resolves from IP detection
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -376,8 +449,18 @@ export default function HomePageClient({ initialTrends = [] }) {
   /**
    * Stream a text card from the backend
    */
-  const streamSingleCard = useCallback(async (genId) => {
-    const t = topicRef.current.trim();
+  // Returns next topic from selectedTopicsRef, cycling in order.
+  // Falls back to topicRef.current when no topics are selected.
+  const getNextRotatedTopic = useCallback(() => {
+    const topics = selectedTopicsRef.current;
+    if (!topics.length) return topicRef.current;
+    const idx = topicRotationIdxRef.current % topics.length;
+    topicRotationIdxRef.current += 1;
+    return topics[idx];
+  }, []);
+
+  const streamSingleCard = useCallback(async (genId, topicOverride) => {
+    const t = (topicOverride || topicRef.current).trim();
     if (!t) return ERROR_CARD_MARKER;
 
     try {
@@ -590,12 +673,13 @@ export default function HomePageClient({ initialTrends = [] }) {
           const result = await generateVideo(genId);
           slot = result === "__VIDEO_ERROR__" ? ERROR_CARD_MARKER : { ...result, mode: m };
         } else {
-          // Generate text cards for learn/entertain modes
-          const text = await streamSingleCard(genId);
+          // Rotate through selected topics per card
+          const nextTopic = getNextRotatedTopic();
+          const text = await streamSingleCard(genId, nextTopic);
           slot =
             text === ERROR_CARD_MARKER
               ? ERROR_CARD_MARKER
-              : { text, mode: m };
+              : { text, mode: m, topic: nextTopic };
         }
 
         setBuffer((prev) => {
@@ -635,6 +719,7 @@ export default function HomePageClient({ initialTrends = [] }) {
       const bootMode = modeRef.current;
       
       let settled;
+      let bootTopics = []; // topic per card slot (only used for learn/entertain)
       if (bootMode === "news") {
         // For news mode, generate 3 initial video explainer cards
         const results = await Promise.allSettled([
@@ -644,13 +729,13 @@ export default function HomePageClient({ initialTrends = [] }) {
         ]);
         settled = results;
       } else {
-        // For learn/entertain modes, generate 3 text cards
-        // Use Promise.allSettled to get results as they complete
-        const promises = [
-          streamSingleCard(genId),
-          streamSingleCard(genId),
-          streamSingleCard(genId),
+        // For learn/entertain modes, cycle through selected topics for initial 3 cards
+        bootTopics = [
+          getNextRotatedTopic(),
+          getNextRotatedTopic(),
+          getNextRotatedTopic(),
         ];
+        const promises = bootTopics.map((t) => streamSingleCard(genId, t));
         
         settled = await Promise.allSettled(promises);
         
@@ -674,14 +759,14 @@ export default function HomePageClient({ initialTrends = [] }) {
       );
 
       setCards(
-        items.map((item) => {
+        items.map((item, i) => {
           if (item === ERROR_CARD_MARKER) return item;
           if (bootMode === "news") {
             // Item is a news article object
             return item;
           } else {
-            // Item is a string text from streamSingleCard
-            return { text: item, mode: bootMode };
+            // Each card tracks the topic it was generated for
+            return { text: item, mode: bootMode, topic: bootTopics[i] };
           }
         })
       );
@@ -876,6 +961,26 @@ export default function HomePageClient({ initialTrends = [] }) {
     }
   };
 
+  const handleTrendingTopicToggle = useCallback((topicName) => {
+    setSelectedTrendingTopics((prev) =>
+      prev.includes(topicName)
+        ? prev.filter((t) => t !== topicName)
+        : [...prev, topicName]
+    );
+  }, []);
+
+  const handleStartFeed = useCallback(() => {
+    if (selectedTopicsRef.current.length === 0) return;
+    topicRotationIdxRef.current = 0;
+    const firstTopic = selectedTopicsRef.current[0];
+    topicRef.current = firstTopic;
+    setTopic(firstTopic);
+    setIsTrendingSession(true);
+    const next = pushExplored(firstTopic, modeRef.current);
+    setExploredList(next);
+    transitionToFeedHero();
+  }, [transitionToFeedHero]);
+
   const handleNewTopic = () => {
     generationIdRef.current++;
     setUiPhase("landing");
@@ -888,6 +993,8 @@ export default function HomePageClient({ initialTrends = [] }) {
     setScrollHintHidden(false);
     setSuggestOpen(false);
     setIsTrendingSession(false);
+    setSelectedTrendingTopics([]);
+    topicRotationIdxRef.current = 0;
     setDrawerOpen(false);
     if (heroExitTimerRef.current) {
       clearTimeout(heroExitTimerRef.current);
@@ -977,20 +1084,48 @@ export default function HomePageClient({ initialTrends = [] }) {
     );
   }, []);
 
-  const toggleSave = useCallback((cardIndex, text, cardMode) => {
+  const toggleSave = useCallback((cardIndex, text, cardMode, cardTopic) => {
+    const effectiveTopic = cardTopic || topicRef.current;
     const rec = {
       id: cardIndex,
-      topic: topicRef.current,
+      topic: effectiveTopic,
       mode: cardMode,
       text,
       timestamp: Date.now(),
     };
+    // Determine save vs unsave synchronously via ref — avoids React async closure issue
+    const alreadySaved = savedRecordsRef.current.some(
+      (r) => r.topic === rec.topic && r.mode === rec.mode && r.text === rec.text
+    );
     setSavedRecords((prev) => {
       const match = (r) =>
         r.topic === rec.topic && r.mode === rec.mode && r.text === rec.text;
       if (prev.some(match)) return prev.filter((r) => !match(r));
       return [...prev, rec];
     });
+    // On save (not unsave): immediately boost sentiment for this topic
+    if (!alreadySaved) {
+      setSentimentProfile((prev) => {
+        const updated = updateProfile(
+          prev,
+          {
+            topic: effectiveTopic,
+            mode: cardMode,
+            categories: topicToSentimentCategories(effectiveTopic),
+          },
+          {
+            completionRate: 0.8,   // treat as well-watched
+            replayCount: 0,
+            saved: true,           // weight 1.0 — strongest positive signal
+            liked: false,
+            disliked: false,
+            scrolledAwayAt: 0.8,
+          }
+        );
+        saveProfile(updated);
+        return updated;
+      });
+    }
   }, []);
 
   const handleUnsave = useCallback((rec) => {
@@ -1151,19 +1286,36 @@ export default function HomePageClient({ initialTrends = [] }) {
 
   return (
     <div className="container">
+      {/* Hover-to-reveal discover sidebar — floats over the left edge on all phases */}
+      <LandingSidebarDock
+        enabled
+        mobileOpen={mobileSidebarOpen}
+        onMobileOpenChange={setMobileSidebarOpen}
+        onMetricsChange={onSidebarDockMetrics}
+      >
+        <DiscoverSidebar
+          exploredEntries={exploredList}
+          onPopularSelect={(t) => {
+            topicRef.current = t;
+            setTopic(t);
+            if (uiPhaseRef.current === "landing") beginFeedFromLanding();
+          }}
+          onCategorySelect={(cat) => {
+            topicRef.current = cat;
+            setTopic(cat);
+            if (uiPhaseRef.current === "landing") beginFeedFromLanding();
+          }}
+          onExploredSelect={(entry) => {
+            topicRef.current = entry.topic;
+            setTopic(entry.topic);
+            setMode(entry.mode || "learn");
+            if (uiPhaseRef.current === "landing") beginFeedFromLanding();
+          }}
+        />
+      </LandingSidebarDock>
+
       {uiPhase === "landing" && (
-        <header
-          className="header header--landing"
-          style={layoutSidebarShiftStyle}
-        >
-          <button
-            type="button"
-            className="header-hamburger"
-            onClick={() => setMobileSidebarOpen(true)}
-            aria-label="Open discover menu"
-          >
-            ☰
-          </button>
+        <header className="header header--landing">
           <div className="header-logo-wrap">
             <span className="blink-logo">
               <span className="blink-dots" aria-hidden>●●</span>
@@ -1172,7 +1324,6 @@ export default function HomePageClient({ initialTrends = [] }) {
           </div>
           <div className="header-right">
             {headerSavedBtn}
-            <ModeToggle mode={mode} onModeChange={handleModeChange} disabled={isLoading} />
             <button
               className="header-account-btn"
               onClick={() => signOut({ callbackUrl: "/auth/signin" })}
@@ -1250,222 +1401,76 @@ export default function HomePageClient({ initialTrends = [] }) {
       />
 
       {showHero && (
-        <>
-          <LandingSidebarDock
-            enabled={showHero}
-            mobileOpen={mobileSidebarOpen}
-            onMobileOpenChange={setMobileSidebarOpen}
-            onMetricsChange={onSidebarDockMetrics}
-          >
-            <DiscoverSidebar
-              exploredEntries={exploredList}
-              onPopularSelect={(name) =>
-                startTopicAndFeed(name, modeRef.current, false)
-              }
-              onCategorySelect={(cat) =>
-                startTopicAndFeed(cat, modeRef.current, false)
-              }
-              onExploredSelect={(entry) =>
-                startTopicAndFeed(entry.topic, entry.mode, false)
-              }
-            />
-          </LandingSidebarDock>
-          <div
-            className={`landing-shell ${heroExiting ? "landing-shell--exiting" : ""}`}
-            aria-hidden={heroExiting}
-            style={layoutSidebarShiftStyle}
-          >
+        <div
+          className={`landing-shell ${heroExiting ? "landing-shell--exiting" : ""}`}
+          aria-hidden={heroExiting}
+        >
           <div className="landing-main">
-            <div className="landing-main-inner">
-              <div className="hero-heading-wrap">
-                {userGreeting && (
-                  <div className="user-greeting">
-                    {userGreeting}
-                  </div>
-                )}
-                <h1 className="hero-line hero-line--1">
-                  What are you{" "}
-                  <span
-                    className={
-                      mode === "entertain"
-                        ? "hero-accent-word hero-accent-word--entertain"
-                        : "hero-accent-word hero-accent-word--learn"
-                    }
-                  >
-                    curious
-                  </span>{" "}
-                  about?
-                </h1>
-                <p className="hero-line hero-line--2">
-                  {mode === "entertain"
-                    ? "Mind-blowing facts. One scroll at a time."
-                    : "Learn or get entertained — one scroll at a time."}
-                </p>
-                <p
-                  className="hero-tagline hero-tagline--cycle"
-                  style={{
-                    opacity: taglineFade ? 1 : 0,
-                    transition: "opacity 0.3s ease",
-                  }}
-                >
-                  {CYCLING_TAGLINES[taglineIndex]}
-                </p>
+            <div className="landing-greeting-screen">
+
+              {/* Greeting */}
+              <div className="landing-greeting">
+                {userGreeting || "Welcome back!"}
+              </div>
+              <p className="landing-subtitle">
+                What would you like to explore today?
+              </p>
+
+              {/* Trending topic multi-select grid */}
+              <div className="landing-trending-label">
+                Trending right now — pick what to watch
               </div>
 
-            <div className="hero-line hero-line--3 hero-search-block">
-              <form
-                className="hero-form"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  landingSubmitFromSuggestion();
-                }}
-              >
-                <div
-                  ref={searchWrapRef}
-                  className={`search-field-wrap search-field-wrap--has-search-icon ${inputShake ? "search-field-wrap--shake" : ""}`}
-                >
-                  <span className="search-field-wrap__search-icon" aria-hidden>
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#555570"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
+              {trendingLoading ? (
+                <div className="landing-trending-grid">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="trending-chip trending-chip--skeleton" aria-hidden />
+                  ))}
+                </div>
+              ) : (
+                <div className={`landing-trending-grid${trendingFading ? " landing-trending-grid--fading" : ""}`}>
+                  {trendingDisplay.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`trending-chip${selectedTrendingTopics.includes(t.topic) ? " trending-chip--selected" : ""}`}
+                      onClick={() => handleTrendingTopicToggle(t.topic)}
                     >
-                      <circle cx="11" cy="11" r="8" />
-                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                    </svg>
+                      <span className="trending-chip__emoji" aria-hidden>{t.emoji}</span>
+                      <span className="trending-chip__name">{t.topic}</span>
+                      <span className="trending-chip__exploring">{t.exploringLabel}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Mode toggle */}
+              <div className="landing-mode-row">
+                <ModeToggle mode={mode} onModeChange={handleModeChange} disabled={heroExiting} />
+              </div>
+
+              {/* Start Feed CTA */}
+              <button
+                type="button"
+                className={`start-feed-btn${selectedTrendingTopics.length > 0 ? " start-feed-btn--active" : ""}`}
+                onClick={handleStartFeed}
+                disabled={selectedTrendingTopics.length === 0 || heroExiting}
+              >
+                {heroExiting ? (
+                  <span className="start-feed-btn__inner">
+                    <span className="submit-spinner" aria-hidden />
+                    Starting…
                   </span>
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    placeholder="What are you curious about?"
-                    value={topic}
-                    onChange={(e) => {
-                      setTopic(e.target.value);
-                      setSuggestOpen(true);
-                      setHighlightIndex(-1);
-                    }}
-                    onFocus={() => setSuggestOpen(true)}
-                    onBlur={() =>
-                      window.setTimeout(() => setSuggestOpen(false), 120)
-                    }
-                    onKeyDown={onSearchKeyDown}
-                    className="topic-input topic-input--hero"
-                    autoComplete="off"
-                    disabled={heroExiting && isLoading}
-                  />
-                  {showSuggestions && (
-                    <div className="suggestion-dropdown" role="listbox">
-                      {filteredSuggestions.map((item, idx) => (
-                        <button
-                          key={item.topic}
-                          type="button"
-                          role="option"
-                          aria-selected={highlightIndex === idx}
-                          className={`suggestion-row ${highlightIndex === idx ? "suggestion-row--active" : ""}`}
-                          onMouseDown={(ev) => ev.preventDefault()}
-                          onClick={() => {
-                            applySuggestion(item.topic);
-                            setIsTrendingSession(false);
-                            beginFeedFromLanding();
-                          }}
-                        >
-                          <span className="suggestion-icon" aria-hidden>
-                            {item.icon}
-                          </span>
-                          <span>{item.topic}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="submit"
-                  className={`submit-btn ${firstCardLoading && heroExiting ? "submit-btn--loading" : ""}`}
-                  disabled={(heroExiting && isLoading) || firstCardLoading}
-                >
-                  {firstCardLoading && heroExiting ? (
-                    <span className="submit-btn-inner">
-                      <span className="submit-spinner" aria-hidden />
-                      Generating...
-                    </span>
-                  ) : (
-                    "Start"
-                  )}
-                </button>
-              </form>
-            </div>
+                ) : selectedTrendingTopics.length > 0 ? (
+                  `Start Feed${selectedTrendingTopics.length > 1 ? ` · ${selectedTrendingTopics.length} topics` : ""}`
+                ) : (
+                  "Pick a topic to start"
+                )}
+              </button>
 
-            {showQuickChips && (
-              <div className="hero-line hero-line--4 hero-chips" aria-label="Quick topics">
-                {quickChips.map((c) => (
-                  <button
-                    key={c.value}
-                    type="button"
-                    className="topic-chip"
-                    onClick={() => onChipPick(c.value)}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Trending topics always visible in hero section */}
-            <div className="hero-line hero-line--5 trending-wrap">
-              <TrendingSection
-                items={trendingDisplay}
-                onSelectTopic={startFromTrendingTopic}
-                showUpdatedFlash={showTrendingUpdated}
-                fading={trendingFading}
-                seeAllHref="/trends"
-                isLoading={trendingLoading}
-                sectionLabel={
-                  mode === "entertain"
-                    ? "Trending Now"
-                    : "Trending Now"
-                }
-              />
-            </div>
-            <section
-              className="landing-how-it-works hero-line hero-line--6"
-              aria-label="How it works"
-            >
-              <div className="landing-how-it-works__grid">
-                <div className="landing-how-it-works__col">
-                  <h3 className="landing-how-it-works__title">
-                    Real-time generation
-                  </h3>
-                  <p className="landing-how-it-works__desc">
-                    Every card is created fresh, just for you
-                  </p>
-                </div>
-                <div className="landing-how-it-works__col">
-                  <h3 className="landing-how-it-works__title">
-                    Learns your taste
-                  </h3>
-                  <p className="landing-how-it-works__desc">
-                    The more you scroll, the smarter it gets
-                  </p>
-                </div>
-                <div className="landing-how-it-works__col">
-                  <h3 className="landing-how-it-works__title">
-                    Context-aware
-                  </h3>
-                  <p className="landing-how-it-works__desc">
-                    Content shaped by what&apos;s happening in your world
-                  </p>
-                </div>
-              </div>
-            </section>
             </div>
           </div>
-          </div>
-        </>
+        </div>
       )}
 
       {(uiPhase === "hero_exit" || uiPhase === "feed") && (
@@ -1565,7 +1570,8 @@ export default function HomePageClient({ initialTrends = [] }) {
                 );
               }
               if (isCardPayload(item)) {
-                const { text: cardBody, mode: cardMode } = item;
+                const { text: cardBody, mode: cardMode, topic: cardTopic } = item;
+                const displayTopic = cardTopic || topic;
                 const hasText = Boolean(String(cardBody || "").trim());
                 if (!hasText) {
                   return (
@@ -1579,7 +1585,7 @@ export default function HomePageClient({ initialTrends = [] }) {
                     <FeedCard
                       text={cardBody}
                       cardNumber={cardOrdinal}
-                      topic={topic}
+                      topic={displayTopic}
                       mode={cardMode}
                       scrollRootRef={feedRef}
                       showTrendingBadge={isTrendingSession}
@@ -1589,7 +1595,7 @@ export default function HomePageClient({ initialTrends = [] }) {
                       likeCount={likeCountForText(cardBody, cardMode)}
                       onToggleLike={() => toggleLike(idx, cardBody, cardMode)}
                       onToggleDislike={() => toggleDislike(idx, cardBody, cardMode)}
-                      onToggleSave={() => toggleSave(idx, cardBody, cardMode)}
+                      onToggleSave={() => toggleSave(idx, cardBody, cardMode, displayTopic)}
                       onCardLeave={handleCardLeave}
                     />
                     {idx === 0 && (

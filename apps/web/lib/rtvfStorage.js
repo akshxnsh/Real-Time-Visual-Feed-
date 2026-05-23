@@ -5,6 +5,7 @@
 export const STORAGE_LIKED = "rtvf_liked";
 export const STORAGE_DISLIKED = "rtvf_disliked";
 export const STORAGE_SAVED = "rtvf_saved";
+export const STORAGE_GENRES = "rtvf_genres";
 
 /** @typedef {{ id: number, topic: string, mode: string, text: string, timestamp: number }} RtvlfCardRecord */
 
@@ -43,4 +44,27 @@ export function recordsMatch(a, b) {
 export function countLikesForCard(topic, mode, text, likedRecords) {
   return likedRecords.filter((r) => r.topic === topic && r.mode === mode && r.text === text)
     .length;
+}
+
+/** Load preferred genres from localStorage */
+export function loadGenres() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_GENRES);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Save preferred genres to localStorage */
+export function saveGenres(genres) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_GENRES, JSON.stringify(genres));
+  } catch (e) {
+    console.warn("rtvf genres write failed", e);
+  }
 }

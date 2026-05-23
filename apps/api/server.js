@@ -8,6 +8,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import geoip from "geoip-lite";
 
 // IMPORTANT: Load dotenv FIRST before any code that uses env variables
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,11 +21,11 @@ if (result.error) {
   console.log("✅ .env file loaded successfully");
 }
 
-if (!process.env.GROQ_API_KEY) {
-  console.error("❌ GROQ_API_KEY not found in environment!");
+if (!process.env.GROQ_TRENDS_API_KEY && !process.env.GROQ_API_KEY) {
+  console.error("❌ No Groq API key found! Set GROQ_TRENDS_API_KEY (or GROQ_API_KEY as fallback).");
   process.exit(1);
 } else {
-  console.log("✅ GROQ_API_KEY is set");
+  console.log("✅ Groq key available for trends generation");
 }
 
 // Check for video generation environment variables
@@ -41,8 +42,9 @@ if (hasVideoConfig) {
 }
 
 // Use dynamic import to load modules AFTER env vars are loaded
-const { generateCard, generateTrendingTopics } = await import("../../services/llm.js");
+const { generateTrendingTopics } = await import("../../services/llm.js");
 const { fetchBreakingNews, searchNews } = await import("../../services/news.js");
+const { buildVideoPromptPreview } = await import("../../services/video.js");
 const videoRouter = await import("./routes/video.js");
 
 const app = express();
@@ -77,7 +79,8 @@ app.get("/api/trending", async (req, res) => {
     }
 
     // Generate fresh trending topics directly via Groq (no external news API)
-    const trends = await generateTrendingTopics(country);
+    // Request 20 so the client has a full rotation pool
+    const trends = await generateTrendingTopics(country, 20);
 
     if (trends.length === 0) {
       return res.json({ topics: [], error: "Could not generate trending topics" });
@@ -136,116 +139,42 @@ if (hasVideoConfig) {
 }
 
 /**
- * Augment the topic string passed into the LLM user message with personalization
- * and trending hints (llm.js is unchanged — context rides in the topic field).
- */
-function augmentTopicForGeneration(topic, { preferences, isTrending, sentimentProfile }) {
-  const base = topic.trim();
-  const extras = [];
-
-  const liked = preferences?.likedTopics;
-  if (Array.isArray(liked) && liked.length > 0) {
-    const labels = liked
-      .map((item) => {
-        if (item && typeof item === "object" && item.topic) return item.topic;
-        return null;
-      })
-      .filter(Boolean);
-    const unique = [...new Set(labels)];
-    if (unique.length > 0) {
-      extras.push(
-        `The user has previously enjoyed content about: ${unique.join(", ")}. Lean towards similar angles, depth, and style in this card.`
-      );
-    }
-  }
-
-  // Add sentiment profile personalization if available
-  if (sentimentProfile && sentimentProfile.profileConfidence >= 0.3) {
-    const topTopics = Object.entries(sentimentProfile.topics)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 3)
-      .map(([t]) => t);
-    
-    if (topTopics.length > 0) {
-      extras.push(
-        `User profile suggests interest in: ${topTopics.join(", ")}.`
-      );
-    }
-  }
-
-  if (isTrending === true) {
-    extras.push(
-      "This is a trending topic right now. Make the content feel timely and current. Reference that this topic is being widely discussed. Keep the energy high."
-    );
-  }
-
-  if (extras.length === 0) return base;
-  return `${base}\n\n---\n${extras.join("\n\n")}`;
-}
-
-/**
- * Feed card system prompts (LEARN vs ENTERTAIN) live in services/llm.js → buildSystemPrompt.
- * They are applied inside generateCard(); this route only forwards topic, mode, history, and personalization.
- */
-
-/**
  * POST /api/feed/generate
- * Generate a single feed card and stream it back via SSE.
+ * Returns the final LTX-Video prompt that would be sent to the io.net Docker
+ * container for this topic/mode/region. Used to preview video generation while
+ * GPU credentials are not yet configured.
  *
- * Request body:
- * {
- *   topic: string,
- *   mode: "learn" | "entertain",
- *   history: string[] (optional),
- *   preferences?: { likedTopics?: { topic: string, mode: string, cardText: string }[] },
- *   isTrending?: boolean,
- *   sentimentProfile?: { topics, style, depth, pacing, mode, profileConfidence, ... }
- * }
+ * Request body: { topic: string, mode: "learn" | "entertain" }
  */
 app.post("/api/feed/generate", async (req, res) => {
-  const {
-    topic,
-    mode,
-    history = [],
-    preferences,
-    isTrending,
-    sentimentProfile,
-  } = req.body;
+  const { topic, mode } = req.body;
 
-  // Validate input
   if (!topic || !topic.trim()) {
     return res.status(400).json({ error: "topic is required" });
   }
 
-  if (!["learn", "entertain"].includes(mode)) {
+  if (!['learn', 'entertain'].includes(mode)) {
     return res.status(400).json({ error: 'mode must be "learn" or "entertain"' });
   }
 
-  const effectiveTopic = augmentTopicForGeneration(topic, {
-    preferences,
-    isTrending,
-    sentimentProfile,
-  });
+  // Detect user region from IP for regional context in prompt preview
+  const rawIp = req.headers['x-forwarded-for'];
+  const ip =
+    (typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : null) ||
+    req.headers['cf-connecting-ip'] ||
+    req.ip;
+  const geo = geoip.lookup(ip);
+  const countryCode = geo?.country || 'US';
 
-  // Set up SSE headers
+  const prompt = buildVideoPromptPreview(topic, mode, countryCode);
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
-  try {
-    // Stream the generated card
-    for await (const chunk of generateCard(effectiveTopic, mode, history)) {
-      res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
-    }
-
-    // Send completion signal
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-    res.end();
-  } catch (error) {
-    console.error("Feed generation error:", error);
-    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
-    res.end();
-  }
+  res.write(`data: ${JSON.stringify({ chunk: prompt })}\n\n`);
+  res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+  res.end();
 });
 
 // Start server

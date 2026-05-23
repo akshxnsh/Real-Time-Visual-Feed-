@@ -211,3 +211,134 @@
   color: #8888aa;
   cursor: not-allowed;
 }
+
+/* ── Step indicator ─────────────────────────────────────────── */
+.onboard-steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 1.4rem;
+}
+
+.onboard-step-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #232336;
+  border: 2px solid #35355a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #8888aa;
+  transition: background 0.25s, border-color 0.25s, color 0.25s;
+}
+
+.onboard-step-dot--active {
+  background: #7c6ff7;
+  border-color: #7c6ff7;
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(124,111,247,0.18);
+}
+
+.onboard-step-line {
+  width: 36px;
+  height: 2px;
+  background: #35355a;
+  border-radius: 2px;
+  margin: 0 4px;
+}
+
+/* ── Card stepping animation ────────────────────────────────── */
+.onboard-card--stepping {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+  transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+/* ── Genre grid ─────────────────────────────────────────────── */
+.onboard-genres {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.65rem;
+  width: 100%;
+  margin-bottom: 1.4rem;
+}
+
+.onboard-genre-btn {
+  background: #232336;
+  color: #f0f0f5;
+  border: 1.5px solid #35355a;
+  border-radius: 10px;
+  padding: 0.7rem 0.5rem;
+  font-size: 0.93rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  transition: background 0.18s, border-color 0.18s, color 0.18s, box-shadow 0.18s;
+  outline: none;
+}
+
+.onboard-genre-btn:focus {
+  box-shadow: 0 0 0 2px #7c6ff7;
+}
+
+.onboard-genre-btn--selected {
+  background: rgba(124,111,247,0.15);
+  border-color: #7c6ff7;
+  color: #c5beff;
+  box-shadow: 0 0 0 2px rgba(124,111,247,0.25);
+}
+
+.onboard-genre-emoji {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.onboard-genre-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ── Genre step action row ──────────────────────────────────── */
+.onboard-genre-actions {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+  margin-top: 0.2rem;
+}
+
+.onboard-back-btn {
+  background: transparent;
+  color: #8888aa;
+  border: 1.5px solid #35355a;
+  border-radius: 10px;
+  padding: 0.8rem 1.2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.18s, color 0.18s;
+  flex-shrink: 0;
+}
+
+.onboard-back-btn:hover {
+  border-color: #7c6ff7;
+  color: #c5beff;
+}
+
+.onboard-submit-btn--primary {
+  flex: 1;
+  margin-top: 0;
+  background: linear-gradient(135deg, #7c6ff7 0%, #9b8cff 100%);
+  box-shadow: 0 4px 20px rgba(124,111,247,0.35);
+}
+
+.onboard-submit-btn--primary:not(:disabled):hover {
+  background: linear-gradient(135deg, #9b8cff 0%, #7c6ff7 100%);
+  box-shadow: 0 6px 28px rgba(124,111,247,0.5);
+}

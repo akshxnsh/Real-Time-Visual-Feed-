@@ -111,23 +111,25 @@ Topic history (do not repeat these concepts): ${historyText}`;
 }
 
 /**
- * Generate 6 trending topics directly via Groq — no external news API needed.
+ * Generate trending topics directly via Groq — no external news API needed.
  * Groq picks diverse, interesting topics relevant to the given country.
  * Each call produces fresh variety thanks to temperature 0.9.
  *
  * @param {string} [countryName="the world"] - Country name to tailor trends for (e.g. "India", "United Kingdom")
+ * @param {number} [count=20] - How many topics to generate (default 20 for rotation pool)
  * @returns {Promise<Array<{id,topic,emoji,category,exploring}>>}
  */
-export async function generateTrendingTopics(countryName = "the world") {
+export async function generateTrendingTopics(countryName = "the world", count = 20) {
   // Sanitize: strip anything that isn't letters, spaces, hyphens, or apostrophes
   const safeCountry = String(countryName).replace(/[^a-zA-Z\s\-']/g, "").trim().slice(0, 60) || "the world";
+  const safeCount = Math.min(Math.max(Math.floor(count), 6), 30); // clamp 6–30
 
   // Inject today's date so the model never produces outdated events (e.g. past seasons/years)
   const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
-  const systemPrompt = `You are a trend curator for a real-time visual feed app. Today's date is ${today}. Generate exactly 6 diverse, interesting trending topics that people in ${safeCountry} would want to explore right now.
+  const systemPrompt = `You are a trend curator for a real-time visual feed app. Today's date is ${today}. Generate exactly ${safeCount} diverse, interesting trending topics that people in ${safeCountry} would want to explore right now.
 
-Return ONLY a valid JSON object with a single key "trends" containing an array of exactly 6 objects. No conversational text, no markdown.
+Return ONLY a valid JSON object with a single key "trends" containing an array of exactly ${safeCount} objects. No conversational text, no markdown.
 Each object must have exactly these fields:
 {
   "topic": "Specific, vivid topic name — be precise (e.g. 'Quantum Supremacy Race', not just 'Quantum')",
@@ -139,13 +141,12 @@ Each object must have exactly these fields:
 Rules:
 - Today is ${today} — all topics must be relevant to this specific point in time. Never reference past years' events (e.g. do not say "IPL 2024" if the current year is 2026).
 - Tailor topics to what is culturally and currently relevant in ${safeCountry}
-- Cover at least 4 different categories across the 6 topics
+- Cover ALL 8 categories across the ${safeCount} topics — good variety
 - Mix locally specific topics with globally relevant ones
 - Vary the specificity: mix broad (Space Exploration) and specific (James Webb Exoplanet Find)
-- No duplicate categories unless unavoidable
 - exploring values must be realistic and varied (not all the same number)`;
 
-  const userPrompt = `Today is ${today}. Generate 6 trending topics for people in ${safeCountry} right now. Return only the JSON object.`;
+  const userPrompt = `Today is ${today}. Generate ${safeCount} trending topics for people in ${safeCountry} right now. Return only the JSON object.`;
 
   try {
     const response = await trendsClient.chat.completions.create({
@@ -155,7 +156,7 @@ Rules:
         { role: "user", content: userPrompt },
       ],
       temperature: 0.9,
-      max_tokens: 500,
+      max_tokens: 1200,
       response_format: { type: "json_object" },
     });
 
@@ -165,7 +166,7 @@ Rules:
       ? parsed
       : parsed.trends || parsed.topics || Object.values(parsed)[0] || [];
 
-    return trendsList.slice(0, 6).map((item, idx) => ({
+    return trendsList.slice(0, safeCount).map((item, idx) => ({
       id: idx + 1,
       topic: item.topic || "Unknown Topic",
       emoji: item.emoji || "🔥",
