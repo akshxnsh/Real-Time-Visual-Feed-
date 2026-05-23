@@ -1,6 +1,6 @@
 // In-memory cache for news API responses
 const _newsCache = {};
-const NEWS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const NEWS_CACHE_TTL = 15 * 60 * 1000; // 15 minutes — keeps daily GNews quota safe
 
 function getCacheKey(prefix, ...args) {
   return `${prefix}:${args.join(":")}`;
@@ -45,7 +45,7 @@ export async function fetchBreakingNews(category = "breaking", country = "us") {
       return cached;
     }
   if (!NEWS_API_KEY) {
-    console.warn("⚠️  NEWSDATA_API_KEY not configured");
+    console.warn("⚠️  GNEWS_API_KEY not configured");
     return [];
   }
 
@@ -172,7 +172,7 @@ export async function searchNews(topic, country = "us") {
       return cached;
     }
   if (!NEWS_API_KEY) {
-    console.warn("⚠️  NEWSDATA_API_KEY not configured");
+    console.warn("⚠️  GNEWS_API_KEY not configured");
     return [];
   }
 

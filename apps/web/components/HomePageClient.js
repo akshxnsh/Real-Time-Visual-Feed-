@@ -9,7 +9,6 @@ import {
 } from "react";
 import FeedCard from "../components/FeedCard";
 import { signOut, useSession } from "next-auth/react";
-import NewsCard from "../../../components/NewsCard.jsx";
 import VideoCard from "../components/VideoCard";
 import LoadingScreen from "../components/LoadingScreen";
 import FeedErrorCard from "../components/FeedErrorCard";
@@ -83,18 +82,7 @@ function isCardPayload(item) {
     typeof item === "object" &&
     !Array.isArray(item) &&
     typeof item.text === "string" &&
-    (item.mode === "learn" || item.mode === "entertain")
-  );
-}
-
-function isNewsArticle(item) {
-  return (
-    item !== null &&
-    typeof item === "object" &&
-    !Array.isArray(item) &&
-    typeof item.title === "string" &&
-    typeof item.description === "string" &&
-    item.mode === "news"
+    (item.mode === "learn" || item.mode === "entertain" || item.mode === "news")
   );
 }
 
@@ -516,51 +504,6 @@ export default function HomePageClient({ initialTrends = [] }) {
   }, []);
 
   /**
-   * Fetch breaking news articles from NewsAPI
-   * Returns an array of news articles to populate the feed
-   * @param {number} genId - Generation ID to detect cancellations
-   * @returns {Promise<Array|"__NEWS_ERROR__">}
-   */
-  const fetchNewsArticles = useCallback(async (genId) => {
-    const t = topicRef.current.trim();
-    
-    try {
-      const endpoint = t && t !== "breaking" 
-        ? `${API_BASE}/api/news/search?q=${encodeURIComponent(t)}`
-        : `${API_BASE}/api/news/breaking?category=breaking`;
-
-      const response = await fetch(endpoint);
-
-      if (!response.ok) {
-        console.error("News fetch failed:", response.status);
-        return ERROR_CARD_MARKER;
-      }
-
-      const data = await response.json();
-
-      if (generationIdRef.current !== genId) {
-        return [];
-      }
-
-      if (!data.articles || data.articles.length === 0) {
-        console.warn("No news articles found");
-        return ERROR_CARD_MARKER;
-      }
-
-      // Transform articles into card format
-      const newsCards = data.articles.map((article) => ({
-        ...article,
-        mode: "news",
-      }));
-
-      return newsCards;
-    } catch (error) {
-      console.error("Failed to fetch news:", error);
-      return ERROR_CARD_MARKER;
-    }
-  }, []);
-
-  /**
    * Generate a single video and poll until complete
    * Sends timezone with every request
    * @param {number} genId - Generation ID to detect cancellations
@@ -668,19 +611,15 @@ export default function HomePageClient({ initialTrends = [] }) {
         const genId = generationIdRef.current;
         let slot;
 
-        if (m === "news") {
-          // Generate visually animated news video explanation
-          const result = await generateVideo(genId);
-          slot = result === "__VIDEO_ERROR__" ? ERROR_CARD_MARKER : { ...result, mode: m };
-        } else {
-          // Rotate through selected topics per card
-          const nextTopic = getNextRotatedTopic();
-          const text = await streamSingleCard(genId, nextTopic);
-          slot =
-            text === ERROR_CARD_MARKER
-              ? ERROR_CARD_MARKER
-              : { text, mode: m, topic: nextTopic };
-        }
+        // All modes (learn, entertain, news) stream a prompt card from the backend.
+        // For news mode the backend fetches a regional GNews article and injects it
+        // into the LTX-Video prompt automatically — no article fetching needed here.
+        const nextTopic = getNextRotatedTopic();
+        const text = await streamSingleCard(genId, nextTopic);
+        slot =
+          text === ERROR_CARD_MARKER
+            ? ERROR_CARD_MARKER
+            : { text, mode: m, topic: nextTopic };
 
         setBuffer((prev) => {
           const next = [...prev, slot];
@@ -696,7 +635,7 @@ export default function HomePageClient({ initialTrends = [] }) {
         queueMicrotask(() => refillBufferRef.current());
       }
     }
-  }, [generateVideo, fetchNewsArticles, tryReplaceSkeletonWithBuffer]);
+  }, [getNextRotatedTopic, streamSingleCard, tryReplaceSkeletonWithBuffer]);
 
   useEffect(() => {
     refillBufferRef.current = refillBuffer;
@@ -720,33 +659,23 @@ export default function HomePageClient({ initialTrends = [] }) {
       
       let settled;
       let bootTopics = []; // topic per card slot (only used for learn/entertain)
-      if (bootMode === "news") {
-        // For news mode, generate 3 initial video explainer cards
-        const results = await Promise.allSettled([
-          generateVideo(genId),
-          generateVideo(genId),
-          generateVideo(genId)
-        ]);
-        settled = results;
-      } else {
-        // For learn/entertain modes, cycle through selected topics for initial 3 cards
-        bootTopics = [
-          getNextRotatedTopic(),
-          getNextRotatedTopic(),
-          getNextRotatedTopic(),
-        ];
-        const promises = bootTopics.map((t) => streamSingleCard(genId, t));
-        
-        settled = await Promise.allSettled(promises);
-        
-        // Update loading count as each completes
-        settled.forEach((result, idx) => {
-          if (result.status === "fulfilled" && result.value !== ERROR_CARD_MARKER) {
-            videosLoadingRef.current++;
-            setVideosLoadingCount(videosLoadingRef.current);
-          }
-        });
-      }
+      // All modes use streamSingleCard — for news mode the backend fetches a
+      // regional article and builds the LTX-Video prompt server-side.
+      bootTopics = [
+        getNextRotatedTopic(),
+        getNextRotatedTopic(),
+        getNextRotatedTopic(),
+      ];
+      const promises = bootTopics.map((t) => streamSingleCard(genId, t));
+
+      settled = await Promise.allSettled(promises);
+
+      settled.forEach((result) => {
+        if (result.status === "fulfilled" && result.value !== ERROR_CARD_MARKER) {
+          videosLoadingRef.current++;
+          setVideosLoadingCount(videosLoadingRef.current);
+        }
+      });
 
       if (cancelled) {
         bootstrappingRef.current = false;
@@ -761,13 +690,8 @@ export default function HomePageClient({ initialTrends = [] }) {
       setCards(
         items.map((item, i) => {
           if (item === ERROR_CARD_MARKER) return item;
-          if (bootMode === "news") {
-            // Item is a news article object
-            return item;
-          } else {
-            // Each card tracks the topic it was generated for
-            return { text: item, mode: bootMode, topic: bootTopics[i] };
-          }
+          // All modes: item is streamed prompt text from /api/feed/generate
+          return { text: item, mode: bootMode, topic: bootTopics[i] };
         })
       );
       setBuffer([]);
@@ -780,7 +704,7 @@ export default function HomePageClient({ initialTrends = [] }) {
     return () => {
       cancelled = true;
     };
-  }, [uiPhase, feedSession, generateVideo, fetchNewsArticles]);
+  }, [uiPhase, feedSession, getNextRotatedTopic, streamSingleCard]);
 
   useEffect(() => {
     if (uiPhase !== "feed") return;
@@ -1549,23 +1473,6 @@ export default function HomePageClient({ initialTrends = [] }) {
                         faded={scrollHintHidden}
                       />
                     )}
-                  </div>
-                );
-              }
-              if (isNewsArticle(item)) {
-                return (
-                  <div key={idx} className="card-wrapper">
-                    <NewsCard
-                      title={item.title}
-                      description={item.description}
-                      source={item.source}
-                      image={item.image}
-                      timestamp={item.timestamp}
-                      category={item.category}
-                      url={item.url}
-                      onCardLeave={handleCardLeave}
-                      scrollRootRef={scrollRootRef}
-                    />
                   </div>
                 );
               }

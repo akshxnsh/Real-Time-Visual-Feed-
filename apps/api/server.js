@@ -140,11 +140,11 @@ if (hasVideoConfig) {
 
 /**
  * POST /api/feed/generate
- * Returns the final LTX-Video prompt that would be sent to the io.net Docker
- * container for this topic/mode/region. Used to preview video generation while
- * GPU credentials are not yet configured.
+ * Returns the LTX-Video prompt that would be sent to the io.net Docker container.
+ * For "news" mode: fetches a real regional news article from GNews, then builds
+ * a news-enriched video prompt from it — regionally targeted via geoip.
  *
- * Request body: { topic: string, mode: "learn" | "entertain" }
+ * Request body: { topic: string, mode: "learn" | "entertain" | "news" }
  */
 app.post("/api/feed/generate", async (req, res) => {
   const { topic, mode } = req.body;
@@ -153,11 +153,11 @@ app.post("/api/feed/generate", async (req, res) => {
     return res.status(400).json({ error: "topic is required" });
   }
 
-  if (!['learn', 'entertain'].includes(mode)) {
-    return res.status(400).json({ error: 'mode must be "learn" or "entertain"' });
+  if (!['learn', 'entertain', 'news'].includes(mode)) {
+    return res.status(400).json({ error: 'mode must be "learn", "entertain" or "news"' });
   }
 
-  // Detect user region from IP for regional context in prompt preview
+  // Detect user region from IP — drives both regional context and news country targeting
   const rawIp = req.headers['x-forwarded-for'];
   const ip =
     (typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : null) ||
@@ -166,7 +166,26 @@ app.post("/api/feed/generate", async (req, res) => {
   const geo = geoip.lookup(ip);
   const countryCode = geo?.country || 'US';
 
-  const prompt = buildVideoPromptPreview(topic, mode, countryCode);
+  // For news mode: fetch one regional article to anchor the video prompt
+  // topic is the news category chosen by the user (e.g. 'breaking', 'business')
+  let newsArticle = null;
+  if (mode === 'news') {
+    try {
+      // GNews country param is lowercase 2-letter code
+      const countryParam = countryCode.toLowerCase();
+      const articles = await fetchBreakingNews(topic, countryParam);
+      if (articles.length > 0) {
+        // Pick a random article from the batch so each card feels fresh
+        const idx = Math.floor(Math.random() * Math.min(articles.length, 5));
+        newsArticle = articles[idx];
+      }
+    } catch (err) {
+      console.warn('⚠️  News fetch for prompt failed, building topic-only prompt:', err.message);
+    }
+  }
+
+  const promptTopic = newsArticle?.title || topic;
+  const prompt = buildVideoPromptPreview(promptTopic, mode, countryCode, newsArticle);
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
