@@ -1,5 +1,6 @@
 import boto3
 import os
+from urllib.parse import quote
 
 def upload_video(file_path: str, job_id: str) -> str:
     client = boto3.client(
@@ -26,4 +27,6 @@ def upload_video(file_path: str, job_id: str) -> str:
         pass
 
     project_url = os.environ["SUPABASE_PROJECT_URL"]
-    return f"{project_url}/storage/v1/object/public/{bucket}/{key}"
+    # URL-encode bucket name — handles spaces (e.g. "rtvf bucket" → "rtvf%20bucket")
+    bucket_encoded = quote(bucket, safe="")
+    return f"{project_url}/storage/v1/object/public/{bucket_encoded}/{key}"

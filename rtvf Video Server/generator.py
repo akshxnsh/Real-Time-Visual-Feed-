@@ -13,6 +13,9 @@ WIDTH      = 704
 HEIGHT     = 480
 FPS        = 30
 
+# Tracks whether the model finished loading — read by main.py's /health endpoint
+model_ready = False
+
 print("⏳ Loading LTX-Video 0.9.8-13B-distilled...")
 pipe = LTXConditionPipeline.from_pretrained(
     MODEL_ID,
@@ -20,6 +23,7 @@ pipe = LTXConditionPipeline.from_pretrained(
 )
 pipe.to("cuda")
 pipe.vae.enable_tiling()
+model_ready = True
 print("✅ Model ready.")
 
 
