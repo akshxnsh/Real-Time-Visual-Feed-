@@ -48,7 +48,7 @@ export default function TrendsPage() {
         filter === "All" || cat === filter.toLowerCase();
       const matchQ =
         !q ||
-        (t.name || "").toLowerCase().includes(q) ||
+        (t.topic || t.name || "").toLowerCase().includes(q) ||
         cat.includes(q);
       return matchCat && matchQ;
     });
@@ -59,9 +59,9 @@ export default function TrendsPage() {
       <div className={styles.inner}>
         <div className={styles.head}>
           <div>
-            <h1 className={styles.title}>What&apos;s Trending on X</h1>
+            <h1 className={styles.title}>What&apos;s Trending</h1>
             <p className={styles.sub}>
-              Read-only snapshot — cached ~15 minutes; refresh pulls latest.
+              AI-curated topics — refreshes every 15 minutes.
             </p>
           </div>
           <button
@@ -106,14 +106,14 @@ export default function TrendsPage() {
           <div className={styles.grid}>
             {filtered.map((t) => (
               <TrendCard
-                key={`${t.rank}-${t.name}`}
-                name={t.name}
+                key={`${t.id ?? t.rank}-${t.topic ?? t.name}`}
+                name={t.topic ?? t.name}
                 category={t.category}
-                tweetVolume={t.tweetVolume}
-                rank={t.rank}
+                tweetVolume={t.exploring ?? t.tweetVolume}
+                rank={t.id ?? t.rank}
                 onClick={() =>
                   router.push(
-                    `/explore?topic=${encodeURIComponent(t.name)}`
+                    `/explore?topic=${encodeURIComponent(t.topic ?? t.name)}`
                   )
                 }
               />

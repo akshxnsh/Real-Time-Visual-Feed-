@@ -5,6 +5,8 @@ build/
 .next/
 .env
 .env.local
+# Catch .env files in subdirectories (e.g. rtvf Video Server/.env)
+**/.env
 .DS_Store
 *.log
 .idea/

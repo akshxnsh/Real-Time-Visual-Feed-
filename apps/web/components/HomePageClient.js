@@ -460,10 +460,14 @@ export default function HomePageClient({ initialTrends = [] }) {
       if (t && uiPhaseRef.current === "landing") {
         topicRef.current = t;
         setTopic(t);
+        // Auto-launch the feed when arriving via /explore?topic=... redirect
+        // beginFeedFromLanding reads topicRef.current so the sync ref assignment above is enough
+        beginFeedFromLanding();
       }
     } catch {
       /* ignore */
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

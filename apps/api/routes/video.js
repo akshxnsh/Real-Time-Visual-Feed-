@@ -14,8 +14,17 @@ import { ping as pingActivity, countryToRegion } from '../../../services/activit
 
 const router = express.Router()
 
-// Store which node each job is on
+// Store which node each job is on, with a creation timestamp for TTL cleanup
 const jobEndpoints = {}
+// Auto-delete job endpoint entries after 2 hours to prevent unbounded memory growth
+const JOB_TTL_MS = 2 * 60 * 60 * 1000
+
+function setJobEndpoint(jobId, endpoint) {
+  jobEndpoints[jobId] = endpoint
+  setTimeout(() => {
+    delete jobEndpoints[jobId]
+  }, JOB_TTL_MS)
+}
 
 /**
  * POST /api/video/generate
@@ -84,7 +93,7 @@ router.post('/generate', async (req, res) => {
       preBuiltPrompt  // pass through — null means generateVideoJob builds its own
     )
 
-    jobEndpoints[jobId] = endpoint;
+    setJobEndpoint(jobId, endpoint)
 
     res.json({ jobId, countryCode })
 
