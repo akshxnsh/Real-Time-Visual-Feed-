@@ -1,3 +1,47 @@
+/* BLINK label with animated dots */
+.blink-label {
+  position: absolute;
+  top: 7vh;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+  font-family: 'Segoe UI', 'Inter', Arial, sans-serif;
+  user-select: none;
+  pointer-events: none;
+}
+
+.blink-text {
+  font-size: 2.2rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  color: #fff;
+  text-shadow: 0 2px 12px #00d4ff33, 0 1px 2px #0008;
+  margin-right: 0.3em;
+}
+
+.blink-dot {
+  font-size: 2.5rem;
+  font-weight: 900;
+  color: #00d4ff;
+  opacity: 0.7;
+  margin-left: 0.08em;
+  animation: blink-dot-fade 1.2s infinite alternate;
+}
+.blink-dot-1 {
+  animation-delay: 0.1s;
+}
+.blink-dot-2 {
+  animation-delay: 0.6s;
+}
+
+@keyframes blink-dot-fade {
+  0% { opacity: 0.2; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 0.2; transform: scale(0.8); }
+}
 /* LoadingScreen.css - 3-dot loading indicator with animation */
 
 .loading-screen {
@@ -30,6 +74,25 @@
   align-items: center;
   gap: 40px;
   z-index: 10;
+  background: rgba(30, 34, 54, 0.45);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border-radius: 32px;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  padding: 48px 56px 40px 56px;
+  animation: card-fade-in 0.7s cubic-bezier(0.4, 0.2, 0.2, 1);
+}
+
+@keyframes card-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* Loading Indicator */
@@ -57,17 +120,20 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(100, 200, 255, 0.1);
-  border: 2px solid rgba(100, 200, 255, 0.2);
+  background: rgba(100, 200, 255, 0.13);
+  border: 2.5px solid rgba(100, 200, 255, 0.22);
+  box-shadow: 0 4px 24px 0 rgba(100, 200, 255, 0.10), 0 1.5px 8px 0 rgba(0,0,0,0.10);
   transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   cursor: default;
+  backdrop-filter: blur(2.5px);
 }
 
 .dot-inner {
-  font-size: 32px;
+  font-size: 34px;
   color: #64c8ff;
   opacity: 0.5;
-  transition: all 0.4s ease;
+  transition: all 0.4s cubic-bezier(0.4, 0.2, 0.2, 1);
+  filter: drop-shadow(0 0 6px #64c8ff44);
 }
 
 .dot-label {
@@ -104,17 +170,17 @@
 
 /* Filled State */
 .dot.filled {
-  background: rgba(100, 200, 255, 0.25);
-  border-color: rgba(100, 200, 255, 0.5);
-  box-shadow: 0 0 16px rgba(100, 200, 255, 0.4), inset 0 0 8px rgba(100, 200, 255, 0.2);
+  background: rgba(0, 212, 255, 0.22);
+  border-color: #00d4ff;
+  box-shadow: 0 0 24px 0 #00d4ff55, 0 2px 12px 0 #00d4ff22, 0 0 0 4px rgba(0,212,255,0.08);
   animation: none;
 }
 
 .dot.filled .dot-inner {
   opacity: 1;
   color: #00d4ff;
-  text-shadow: 0 0 8px rgba(100, 200, 255, 0.6);
-  animation: dot-pulse 1s ease-in-out infinite;
+  text-shadow: 0 0 12px #00d4ff99, 0 0 24px #00d4ff33;
+  animation: dot-pulse 1.2s cubic-bezier(0.4, 0.2, 0.2, 1) infinite;
 }
 
 @keyframes dot-pulse {
@@ -144,18 +210,19 @@
 
 .progress-bar {
   width: 100%;
-  height: 6px;
-  background: rgba(100, 200, 255, 0.1);
-  border-radius: 3px;
+  height: 8px;
+  background: rgba(100, 200, 255, 0.13);
+  border-radius: 4px;
   overflow: hidden;
-  border: 1px solid rgba(100, 200, 255, 0.2);
+  border: 1.5px solid rgba(100, 200, 255, 0.22);
+  box-shadow: 0 2px 8px 0 rgba(100, 200, 255, 0.10);
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #64c8ff 0%, #00d4ff 100%);
-  transition: width 0.3s ease;
-  box-shadow: 0 0 8px rgba(100, 200, 255, 0.6);
+  background: linear-gradient(90deg, #64c8ff 0%, #00d4ff 60%, #b78dff 100%);
+  transition: width 0.4s cubic-bezier(0.4, 0.2, 0.2, 1);
+  box-shadow: 0 0 16px #00d4ff55, 0 2px 8px #b78dff33;
 }
 
 .progress-text {
@@ -176,17 +243,21 @@
 
 .loading-message h2 {
   margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-  color: #ffffff;
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
   letter-spacing: -0.5px;
+  text-shadow: 0 2px 12px #00d4ff22, 0 1px 2px #0008;
+  font-family: 'Segoe UI', 'Inter', Arial, sans-serif;
 }
 
 .loading-message p {
   margin: 0;
-  font-size: 14px;
-  color: #b0b0b0;
+  font-size: 16px;
+  color: #b0e0ff;
   font-weight: 500;
+  letter-spacing: 0.1px;
+  font-family: 'Segoe UI', 'Inter', Arial, sans-serif;
 }
 
 /* Animated Background Elements */
@@ -198,39 +269,40 @@
   left: 0;
   z-index: 0;
   overflow: hidden;
+  pointer-events: none;
 }
 
 .bg-orb {
   position: absolute;
   border-radius: 50%;
-  opacity: 0.1;
-  filter: blur(80px);
+  opacity: 0.13;
+  filter: blur(90px) saturate(120%);
+  mix-blend-mode: lighten;
 }
-
 .orb-1 {
-  width: 300px;
-  height: 300px;
-  background: #64c8ff;
-  top: -150px;
-  left: -150px;
+  width: 340px;
+  height: 340px;
+  background: linear-gradient(135deg, #64c8ff 0%, #00d4ff 100%);
+  top: -170px;
+  left: -170px;
   animation: float-orb-1 8s ease-in-out infinite;
 }
-
 .orb-2 {
-  width: 250px;
-  height: 250px;
-  background: #ff6464;
-  bottom: -125px;
-  right: -125px;
+  width: 270px;
+  height: 270px;
+  background: linear-gradient(135deg, #ff6464 0%, #ffb864 100%);
+  bottom: -135px;
+  right: -135px;
   animation: float-orb-2 10s ease-in-out infinite;
 }
-
 .orb-3 {
-  width: 200px;
-  height: 200px;
-  background: #b78dff;
+  width: 220px;
+  height: 220px;
+  background: linear-gradient(135deg, #b78dff 0%, #64c8ff 100%);
   top: 50%;
   left: 50%;
+  transform: translate(-50%, -50%);
+  animation: float-orb-3 12s ease-in-out infinite;
   transform: translate(-50%, -50%);
   animation: float-orb-3 12s ease-in-out infinite;
 }

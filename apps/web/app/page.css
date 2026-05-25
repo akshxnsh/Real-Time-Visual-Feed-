@@ -272,7 +272,34 @@
   padding: 10px 20px;
   min-height: 56px;
   flex-wrap: wrap;
-  animation: headerSlideIn 0.45s ease-out both;
+  /* transition instead of one-shot animation */
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.22s ease;
+}
+
+/* Feed: hidden by default, slides up */
+.header--compact.header--feed-hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Feed: revealed on hover */
+.header--compact.header--peeked {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Thin always-present hover trigger strip at the top of the screen */
+.feed-header-trigger {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 18px;
+  z-index: 11;   /* sits above the header (z-index: 10) */
+  cursor: default;
 }
 
 @keyframes headerSlideIn {

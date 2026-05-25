@@ -7,7 +7,7 @@ const LEARN = "#4fc3f7";
 const ENTERTAIN = "#ff6b8a";
 const NEWS = "#ff3c3c";
 
-export default function ModeToggle({ mode, onModeChange, disabled }) {
+export default function ModeToggle({ mode, onModeChange, disabled, feedActive }) {
   const prevRef = useRef(mode);
   const [flash, setFlash] = useState(null);
 
@@ -35,9 +35,10 @@ export default function ModeToggle({ mode, onModeChange, disabled }) {
       <div className="mode-toggle">
         <label className="toggle-label">Mode:</label>
         <div
-          className={`toggle-track toggle-track--${mode}`}
+          className={`toggle-track toggle-track--${mode}${disabled ? " toggle-track--locked" : ""}`}
           role="group"
           aria-label="Content mode"
+          title={disabled ? "Press \"New Topic\" to change mode" : undefined}
         >
           <span
             className="toggle-slider"

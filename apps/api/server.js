@@ -32,13 +32,11 @@ if (!process.env.GROQ_TRENDS_API_KEY && !process.env.GROQ_API_KEY) {
 // Dynamic GPU routing is managed by the MCP agent (IO_NET_API_KEY).
 // Static endpoint env vars are optional fallbacks for cold starts.
 const hasVideoConfig =
-  process.env.IO_NET_API_KEY || process.env.IO_NET_ENDPOINT_US;
+  process.env.IO_NET_API_KEY || process.env.IO_NET_ENDPOINT_US || process.env.IO_NET_ENDPOINT_IN;
 if (hasVideoConfig) {
   console.log("✅ Video generation configured (MCP agent or static endpoint)");
 } else {
-  console.warn(
-    "⚠️  Video generation not configured. Set IO_NET_API_KEY to enable dynamic GPU routing."
-  );
+  console.log("ℹ️  No io.net endpoint set — video routes still mounted. Set IO_NET_ENDPOINT_US or IO_NET_ENDPOINT_IN to point at a local/remote RTVF server.");
 }
 
 // Use dynamic import to load modules AFTER env vars are loaded
@@ -133,10 +131,9 @@ app.get("/api/news/search", async (req, res) => {
   }
 });
 
-// Mount video generation routes (if io.net is configured)
-if (hasVideoConfig) {
-  app.use("/api/video", videoRouter.default);
-}
+// Mount video generation routes — always, so local RTVF server testing works
+// without io.net credentials. Route will return 500 gracefully if no endpoint is set.
+app.use("/api/video", videoRouter.default);
 
 /**
  * POST /api/feed/generate
@@ -144,10 +141,12 @@ if (hasVideoConfig) {
  * For "news" mode: fetches a real regional news article from GNews, then builds
  * a news-enriched video prompt from it — regionally targeted via geoip.
  *
- * Request body: { topic: string, mode: "learn" | "entertain" | "news" }
+ * Request body: { topic: string, mode: "learn" | "entertain" | "news", variant?: number }
  */
 app.post("/api/feed/generate", async (req, res) => {
   const { topic, mode } = req.body;
+  // variant ensures each card for the same topic generates a unique prompt/caption
+  const variant = Math.max(0, Math.min(99, Math.floor(Number(req.body.variant) || 0)));
 
   if (!topic || !topic.trim()) {
     return res.status(400).json({ error: "topic is required" });
@@ -185,14 +184,14 @@ app.post("/api/feed/generate", async (req, res) => {
   }
 
   const promptTopic = newsArticle?.title || topic;
-  const prompt = buildVideoPromptPreview(promptTopic, mode, countryCode, newsArticle);
+  const { prompt, caption } = buildVideoPromptPreview(promptTopic, mode, countryCode, newsArticle, variant);
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
   res.write(`data: ${JSON.stringify({ chunk: prompt })}\n\n`);
-  res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+  res.write(`data: ${JSON.stringify({ done: true, caption })}\n\n`);
   res.end();
 });
 

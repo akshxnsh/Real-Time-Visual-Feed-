@@ -37,7 +37,11 @@ router.post('/generate', async (req, res) => {
     mode = 'learn',
     history = [],
     sentimentProfile = null,
-    timezone = ''
+    timezone = '',
+    // Optional pre-built prompt from the frontend (from /api/feed/generate).
+    // When provided this is sent directly to the RTVF server, bypassing the
+    // internal prompt builder in generateVideoJob().
+    prompt: preBuiltPrompt = null,
   } = req.body
 
   if (!topic) {
@@ -53,7 +57,7 @@ router.post('/generate', async (req, res) => {
          || req.headers['cf-connecting-ip']
          || req.ip
   const geo = geoip.lookup(ip)
-  const countryCode = geo?.country || 'US'
+  const countryCode = geo?.country || process.env.DEFAULT_COUNTRY || 'IN'
 
   console.log(`Request from IP: ${ip} → ${countryCode}`)
 
@@ -76,7 +80,8 @@ router.post('/generate', async (req, res) => {
       mode,
       sentimentProfile,
       countryCode,
-      newsArticle
+      newsArticle,
+      preBuiltPrompt  // pass through — null means generateVideoJob builds its own
     )
 
     jobEndpoints[jobId] = endpoint;

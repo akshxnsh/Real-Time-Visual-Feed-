@@ -140,6 +140,11 @@
   cursor: not-allowed;
 }
 
+.toggle-track--locked {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 @media (max-width: 640px) {
   .mode-toggle {
     gap: 8px;

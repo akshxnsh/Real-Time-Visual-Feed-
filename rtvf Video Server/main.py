@@ -1,6 +1,8 @@
 ﻿import asyncio
 import uuid
 import traceback
+import time
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,9 +13,29 @@ from context_agent import enrich_prompt
 
 jobs: dict = {}
 
+def cleanup_old_jobs():
+    cutoff = time.time() - 3600
+    to_delete = [jid for jid, j in jobs.items()
+                 if j.get("created_at", 0) < cutoff]
+    for jid in to_delete:
+        del jobs[jid]
+    if to_delete:
+        print(f"Cleaned up {len(to_delete)} old jobs")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 RTVF Video Server ready")
+    required_vars = [
+        "STORAGE_ENDPOINT", "STORAGE_ACCESS_KEY",
+        "STORAGE_SECRET_KEY", "STORAGE_BUCKET",
+        "SUPABASE_PROJECT_URL"
+    ]
+    missing = [v for v in required_vars if not os.environ.get(v)]
+    if missing:
+        raise RuntimeError(f"Missing required env vars: {missing}")
+    print("🚀 RTVF Video Server ready — model loading in background")
+    # Load model in a background thread so uvicorn accepts connections immediately.
+    # /health returns 503 until generator.model_ready is True.
+    asyncio.create_task(asyncio.to_thread(generator.load_model))
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -44,7 +66,8 @@ async def generate(req: GenerateRequest):
         raise HTTPException(status_code=400, detail='mode must be "learn", "entertain" or "news"')
 
     job_id = str(uuid.uuid4())
-    jobs[job_id] = {"status": "pending", "videoUrl": None, "error": None}
+    jobs[job_id] = {"status": "pending", "videoUrl": None, "error": None,
+                    "created_at": time.time()}
 
     # Enrichment (calls pytrends + NewsData.io) runs inside the background task
     # so /generate returns the jobId immediately without blocking on HTTP calls
@@ -63,6 +86,7 @@ def get_status(job_id: str):
     }
 
 async def run_generation(job_id: str, req: GenerateRequest):
+    cleanup_old_jobs()
     jobs[job_id]["status"] = "processing"
     try:
         print(f"[{job_id}] Enriching prompt...")

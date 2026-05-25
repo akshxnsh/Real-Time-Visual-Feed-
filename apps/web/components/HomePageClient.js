@@ -93,7 +93,7 @@ function isVideoCard(item) {
     !Array.isArray(item) &&
     typeof item.videoUrl === "string" &&
     item.type === "video" &&
-    (item.mode === "learn" || item.mode === "entertain")
+    (item.mode === "learn" || item.mode === "entertain" || item.mode === "news")
   );
 }
 
@@ -141,6 +141,8 @@ export default function HomePageClient({ initialTrends = [] }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isTrendingSession, setIsTrendingSession] = useState(false);
   const [selectedTrendingTopics, setSelectedTrendingTopics] = useState([]);
+  const [headerPeeked, setHeaderPeeked] = useState(false);
+  const headerHideTimerRef = useRef(null);
 
   // Full pool of 20 topics fetched once per session — never re-fetched
   const allTrendingPoolRef = useRef([]);
@@ -207,6 +209,8 @@ export default function HomePageClient({ initialTrends = [] }) {
   const selectedTopicsRef = useRef(selectedTrendingTopics);
   const topicRotationIdxRef = useRef(0);
   const savedRecordsRef = useRef(savedRecords);
+  // Tracks how many times each topic has been used this session — drives prompt variant
+  const topicVariantRef = useRef(new Map());
 
   topicRef.current = topic;
   historyRef.current = history;
@@ -244,6 +248,10 @@ export default function HomePageClient({ initialTrends = [] }) {
   const pendingRefillRef = useRef(false);
   const ioRef = useRef(null);
   const refillBufferRef = useRef(() => {});
+
+  // Pre-warm pool: jobs submitted silently on app mount before the user picks a topic.
+  // Each entry: { jobId: string, topic: string, mode: "learn" }
+  const preWarmJobsRef = useRef([]);
 
   bufferRef.current = buffer;
   cardsRef.current = cards;
@@ -289,6 +297,53 @@ export default function HomePageClient({ initialTrends = [] }) {
   useEffect(() => {
     saveProfile(sentimentProfile);
   }, [sentimentProfile]);
+
+  // ─── Pre-warm ────────────────────────────────────────────────────────────────
+  // Submit 6 video generation jobs the instant the app mounts — well before the user
+  // picks a topic. The first 3 are consumed by the boot sequence as the opening cards.
+  // The next 3 fill the buffer while the user is watching those first cards, so the
+  // server is never idle from mount through the first 6 cards of the feed.
+  // After those 6 pre-warm videos are exhausted, fresh topic-based generation takes over.
+  const PRE_WARM_TOPICS = [
+    { topic: "Human Brain",      prompt: "Create a fascinating short video about one mind-blowing fact about the human brain and how consciousness works",           caption: "How Your Brain Creates Reality"          },
+    { topic: "Universe",         prompt: "Create a captivating short video about one incredible cosmic fact about our universe and its scale",                       caption: "The Universe's Best-Kept Secret"         },
+    { topic: "Ancient History",  prompt: "Create an engaging short video about one surprising fact from ancient history that changed the world",                     caption: "Ancient History's Biggest Surprise"      },
+    { topic: "Deep Ocean",       prompt: "Create a stunning short video about one extraordinary creature or phenomenon found in the deep ocean",                    caption: "Secrets of the Deep Ocean"               },
+    { topic: "Physics",          prompt: "Create an exciting short video about one counterintuitive fact from quantum physics that challenges everyday reality",     caption: "Quantum Physics Will Blow Your Mind"     },
+    { topic: "Mathematics",      prompt: "Create a captivating short video about one beautiful or surprising pattern hidden inside mathematics",                     caption: "The Hidden Beauty of Mathematics"        },
+  ];
+
+  useEffect(() => {
+    const submitPreWarmJob = async (item) => {
+      try {
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const res = await fetch(`${API_BASE}/api/video/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            topic: item.topic,
+            mode: "learn",
+            prompt: item.prompt,
+            timezone,
+          }),
+        });
+        if (!res.ok) return;
+        const { jobId } = await res.json();
+        if (jobId) {
+          preWarmJobsRef.current = [
+            ...preWarmJobsRef.current,
+            { jobId, topic: item.topic, mode: "learn", caption: item.caption || item.topic },
+          ];
+          console.log(`[pre-warm] job submitted: ${jobId} (${item.topic})`);
+        }
+      } catch {
+        // best-effort — silently ignore pre-warm failures
+      }
+    };
+
+    PRE_WARM_TOPICS.forEach(submitPreWarmJob);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Detect user's country once on mount via free IP geolocation (no API key required)
   useEffect(() => {
@@ -447,7 +502,7 @@ export default function HomePageClient({ initialTrends = [] }) {
     return topics[idx];
   }, []);
 
-  const streamSingleCard = useCallback(async (genId, topicOverride) => {
+  const streamSingleCard = useCallback(async (genId, topicOverride, variant = 0) => {
     const t = (topicOverride || topicRef.current).trim();
     if (!t) return ERROR_CARD_MARKER;
 
@@ -460,6 +515,7 @@ export default function HomePageClient({ initialTrends = [] }) {
           mode: modeRef.current,
           history: historyRef.current,
           sentimentProfile: sentimentProfileRef.current,
+          variant,
         }),
       });
 
@@ -468,11 +524,12 @@ export default function HomePageClient({ initialTrends = [] }) {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let fullText = "";
+      let caption = null;
 
       while (true) {
         if (generationIdRef.current !== genId) {
           reader.cancel();
-          return fullText || ERROR_CARD_MARKER;
+          return fullText ? { prompt: fullText, caption: caption || t } : ERROR_CARD_MARKER;
         }
 
         const { done, value } = await reader.read();
@@ -488,7 +545,10 @@ export default function HomePageClient({ initialTrends = [] }) {
               const data = JSON.parse(dataStr);
               if (data.error) return ERROR_CARD_MARKER;
               if (data.chunk) fullText += data.chunk;
-              if (data.done) return fullText;
+              if (data.done) {
+                if (data.caption) caption = data.caption;
+                return { prompt: fullText, caption: caption || t };
+              }
             } catch (e) {
               // ignore parse errors for partial chunks
             }
@@ -496,7 +556,7 @@ export default function HomePageClient({ initialTrends = [] }) {
         }
       }
 
-      return fullText;
+      return fullText ? { prompt: fullText, caption: caption || t } : ERROR_CARD_MARKER;
     } catch (error) {
       console.error("streamSingleCard error:", error);
       return ERROR_CARD_MARKER;
@@ -504,29 +564,52 @@ export default function HomePageClient({ initialTrends = [] }) {
   }, []);
 
   /**
-   * Generate a single video and poll until complete
-   * Sends timezone with every request
-   * @param {number} genId - Generation ID to detect cancellations
+   * Poll an already-submitted video job until it completes.
+   * Used by the pre-warm drain and by generateVideo() after job submission.
    * @returns {Promise<{videoUrl: string, jobId: string}|"__VIDEO_ERROR__">}
    */
-  const generateVideo = useCallback(async (genId) => {
-    const t = topicRef.current.trim();
+  const pollVideoJob = useCallback(async (genId, jobId) => {
+    const maxAttempts = 300; // 10 minutes max (2s interval)
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (generationIdRef.current !== genId) return "__VIDEO_ERROR__";
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const statusRes = await fetch(`${API_BASE}/api/video/status/${jobId}`);
+        if (!statusRes.ok) continue;
+        const { status, videoUrl } = await statusRes.json();
+        console.log(`[poll] job ${jobId} → ${status}`);
+        if (status === "complete" && videoUrl) return { videoUrl, jobId };
+        if (status === "failed") return "__VIDEO_ERROR__";
+      } catch {
+        // retry on transient network error
+      }
+    }
+    return "__VIDEO_ERROR__";
+  }, []);
+
+  /**
+   * Generate a single video and poll until complete.
+   * @param {number}      genId         - cancellation guard
+   * @param {string}      topicOverride - topic for this card (falls back to topicRef)
+   * @param {string|null} preBuiltPrompt - prompt from streamSingleCard(); null = backend builds its own
+   * @returns {Promise<{videoUrl: string, jobId: string}|"__VIDEO_ERROR__">}
+   */
+  const generateVideo = useCallback(async (genId, topicOverride = null, preBuiltPrompt = null) => {
+    const t = (topicOverride || topicRef.current).trim();
     if (!t) return "__VIDEO_ERROR__";
 
     try {
-      // Detect timezone from browser
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-      // Submit video generation job
       const generateRes = await fetch(`${API_BASE}/api/video/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic: t,
           mode: modeRef.current,
-          history: historyRef.current,
           sentimentProfile: sentimentProfileRef.current,
           timezone,
+          ...(preBuiltPrompt ? { prompt: preBuiltPrompt } : {}),
         }),
       });
 
@@ -538,52 +621,12 @@ export default function HomePageClient({ initialTrends = [] }) {
       const { jobId, countryCode } = await generateRes.json();
       console.log(`Video job created: ${jobId} (${countryCode})`);
 
-      // Poll for completion every 2 seconds
-      const maxAttempts = 300; // 10 minutes max
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        // Check if generation was cancelled
-        if (generationIdRef.current !== genId) {
-          console.log("Video generation cancelled");
-          return "__VIDEO_ERROR__";
-        }
-
-        // Wait 2 seconds before polling (except first attempt)
-        if (attempt > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
-
-        try {
-          const statusRes = await fetch(`${API_BASE}/api/video/status/${jobId}`);
-          
-          if (!statusRes.ok) {
-            console.error("Status check failed:", statusRes.status);
-            continue;
-          }
-
-          const { status, videoUrl } = await statusRes.json();
-          console.log(`Video job ${jobId} status: ${status}`);
-
-          if (status === "complete" && videoUrl) {
-            console.log(`Video ready: ${videoUrl}`);
-            return { videoUrl, jobId };
-          } else if (status === "failed") {
-            console.error("Video generation failed");
-            return "__VIDEO_ERROR__";
-          }
-          // Continue polling if pending or processing
-        } catch (pollError) {
-          console.error("Polling error:", pollError);
-          // Retry on network error
-        }
-      }
-
-      console.error("Video generation timeout");
-      return "__VIDEO_ERROR__";
+      return pollVideoJob(genId, jobId);
     } catch (error) {
       console.error("Failed to generate video:", error);
       return "__VIDEO_ERROR__";
     }
-  }, []);
+  }, [pollVideoJob]);
 
   const tryReplaceSkeletonWithBuffer = useCallback(() => {
     setCards((c) => {
@@ -598,6 +641,26 @@ export default function HomePageClient({ initialTrends = [] }) {
     });
   }, []);
 
+  /**
+   * Drain one pre-warm job from preWarmJobsRef.
+   * Polls until complete and returns a ready video card object, or null if unavailable.
+   * We use these first to give instant feed start — no generation wait for the user.
+   */
+  const drainPreWarm = useCallback(async (genId) => {
+    const jobs = preWarmJobsRef.current;
+    if (!jobs.length) return null;
+    const [job, ...rest] = jobs;
+    preWarmJobsRef.current = rest;
+    const result = await pollVideoJob(genId, job.jobId);
+    if (result === "__VIDEO_ERROR__") return null;
+    return { videoUrl: result.videoUrl, jobId: result.jobId, topic: job.topic, mode: job.mode, caption: job.caption };
+  }, [pollVideoJob]);
+
+  // Target size of the ready-to-play pipeline (pre-warm pool + buffer combined).
+  // Raising this means more videos are generated ahead of time and the server
+  // is kept busy for longer after each refill cycle.
+  const PIPELINE_TARGET = 6;
+
   const refillBuffer = useCallback(async () => {
     if (refillingRef.current) {
       pendingRefillRef.current = true;
@@ -607,26 +670,44 @@ export default function HomePageClient({ initialTrends = [] }) {
     refillingRef.current = true;
     try {
       const m = modeRef.current;
-      while (bufferRef.current.length < 3) {
+      // Sequential loop — generates one video at a time and adds it to the buffer
+      // the instant it completes, then immediately starts the next one.
+      // This keeps the rtvf video server continuously busy (never idle between
+      // completions) until the pipeline reaches PIPELINE_TARGET ready videos.
+      while (bufferRef.current.length < PIPELINE_TARGET) {
         const genId = generationIdRef.current;
         let slot;
 
-        // All modes (learn, entertain, news) stream a prompt card from the backend.
-        // For news mode the backend fetches a regional GNews article and injects it
-        // into the LTX-Video prompt automatically — no article fetching needed here.
-        const nextTopic = getNextRotatedTopic();
-        const text = await streamSingleCard(genId, nextTopic);
-        slot =
-          text === ERROR_CARD_MARKER
-            ? ERROR_CARD_MARKER
-            : { text, mode: m, topic: nextTopic };
+        // Try pre-warm pool first — these were submitted on mount and may already
+        // be done, giving zero-wait buffer fills for the first PIPELINE_TARGET cards.
+        const preWarmed = await drainPreWarm(genId);
+        if (preWarmed) {
+          slot = { ...preWarmed, mode: m, type: "video" };
+        } else {
+          // Pre-warm pool exhausted — generate a fresh topic-based video
+          const nextTopic = getNextRotatedTopic();
+          const variant = topicVariantRef.current.get(nextTopic) || 0;
+          topicVariantRef.current.set(nextTopic, variant + 1);
+          const cardData = await streamSingleCard(genId, nextTopic, variant);
+          if (cardData === ERROR_CARD_MARKER) {
+            slot = ERROR_CARD_MARKER;
+          } else {
+            const { prompt: promptText, caption } = cardData;
+            const videoResult = await generateVideo(genId, nextTopic, promptText);
+            slot =
+              videoResult === "__VIDEO_ERROR__"
+                ? ERROR_CARD_MARKER
+                : { videoUrl: videoResult.videoUrl, jobId: videoResult.jobId, mode: m, topic: nextTopic, caption, type: "video" };
+          }
+        }
 
-        setBuffer((prev) => {
-          const next = [...prev, slot];
-          bufferRef.current = next;
-          return next;
-        });
+        // Add this video to the buffer the moment it's ready — don't wait for
+        // the rest of the loop to finish so skeleton placeholders are replaced ASAP.
+        const next = [...bufferRef.current, slot];
+        bufferRef.current = next;
+        setBuffer(next);
         tryReplaceSkeletonWithBuffer();
+        // Loop back immediately — start the next generation without any pause.
       }
     } finally {
       refillingRef.current = false;
@@ -635,7 +716,7 @@ export default function HomePageClient({ initialTrends = [] }) {
         queueMicrotask(() => refillBufferRef.current());
       }
     }
-  }, [getNextRotatedTopic, streamSingleCard, tryReplaceSkeletonWithBuffer]);
+  }, [drainPreWarm, getNextRotatedTopic, streamSingleCard, generateVideo, tryReplaceSkeletonWithBuffer]);
 
   useEffect(() => {
     refillBufferRef.current = refillBuffer;
@@ -653,58 +734,116 @@ export default function HomePageClient({ initialTrends = [] }) {
     videosLoadingRef.current = 0;
     setVideosLoadingCount(0);
 
+    // Safety valve: if boot takes longer than 3 minutes, force-dismiss the loading screen
+    const safetyTimer = setTimeout(() => {
+      if (bootstrappingRef.current) {
+        setFeedInitialLoading(false);
+        bootstrappingRef.current = false;
+      }
+    }, 180_000);
+
     (async () => {
+      try {
       const genId = generationIdRef.current;
       const bootMode = modeRef.current;
-      
-      let settled;
-      let bootTopics = []; // topic per card slot (only used for learn/entertain)
-      // All modes use streamSingleCard — for news mode the backend fetches a
-      // regional article and builds the LTX-Video prompt server-side.
-      bootTopics = [
+
+      // Determine topics for the 3 initial card slots
+      const bootTopics = [
         getNextRotatedTopic(),
         getNextRotatedTopic(),
         getNextRotatedTopic(),
       ];
-      const promises = bootTopics.map((t) => streamSingleCard(genId, t));
 
-      settled = await Promise.allSettled(promises);
-
-      settled.forEach((result) => {
-        if (result.status === "fulfilled" && result.value !== ERROR_CARD_MARKER) {
-          videosLoadingRef.current++;
-          setVideosLoadingCount(videosLoadingRef.current);
-        }
-      });
+      // ── Phase A: drain pre-warm pool + stream missing prompts ──────────────
+      // For each slot: use a pre-warm job if available, otherwise stream a prompt.
+      // Pre-warm slots already have a jobId ready (or nearly ready); prompt slots
+      // still need a video job submitted.
+      const slotPlan = await Promise.all(
+        bootTopics.map(async (t, i) => {
+          const preWarmed = await drainPreWarm(genId);
+          if (preWarmed) {
+            // Pre-warm video polled to completion — update the loading counter now
+            videosLoadingRef.current++;
+            setVideosLoadingCount(videosLoadingRef.current);
+            return { kind: "prewarm", preWarmed };
+          }
+          // Need to stream a prompt, then submit a video job
+          const promptText = await streamSingleCard(genId, t);
+          return { kind: "fresh", topic: t, promptText };
+        })
+      );
 
       if (cancelled) {
+        clearTimeout(safetyTimer);
         bootstrappingRef.current = false;
         setFeedInitialLoading(false);
         return;
       }
 
-      const items = settled.map((r) =>
+      // ── Phase B: generate/poll all video jobs in parallel ──────────────────
+      const videoPromises = slotPlan.map(async (slot) => {
+        if (slot.kind === "prewarm") {
+          // Already polled to completion in drainPreWarm — result is ready
+          if (!slot.preWarmed) return ERROR_CARD_MARKER;
+          return {
+            videoUrl: slot.preWarmed.videoUrl,
+            jobId: slot.preWarmed.jobId,
+            mode: bootMode,
+            topic: slot.preWarmed.topic,
+            type: "video",
+          };
+        }
+        // Fresh slot: submit video job from the streamed prompt
+        if (slot.promptText === ERROR_CARD_MARKER) {
+          videosLoadingRef.current++;
+          setVideosLoadingCount(videosLoadingRef.current);
+          return ERROR_CARD_MARKER;
+        }
+        const videoResult = await generateVideo(genId, slot.topic, slot.promptText);
+        videosLoadingRef.current++;
+        setVideosLoadingCount(videosLoadingRef.current);
+        if (videoResult === "__VIDEO_ERROR__") return ERROR_CARD_MARKER;
+        return {
+          videoUrl: videoResult.videoUrl,
+          jobId: videoResult.jobId,
+          mode: bootMode,
+          topic: slot.topic,
+          type: "video",
+        };
+      });
+
+      const videoResults = await Promise.allSettled(videoPromises);
+
+      if (cancelled) {
+        clearTimeout(safetyTimer);
+        bootstrappingRef.current = false;
+        setFeedInitialLoading(false);
+        return;
+      }
+
+      const items = videoResults.map((r) =>
         r.status === "fulfilled" ? r.value : ERROR_CARD_MARKER
       );
 
-      setCards(
-        items.map((item, i) => {
-          if (item === ERROR_CARD_MARKER) return item;
-          // All modes: item is streamed prompt text from /api/feed/generate
-          return { text: item, mode: bootMode, topic: bootTopics[i] };
-        })
-      );
+      setCards(items);
       setBuffer([]);
       bufferRef.current = [];
+      clearTimeout(safetyTimer);
       setFeedInitialLoading(false);
       bootstrappingRef.current = false;
       queueMicrotask(() => refillBufferRef.current());
+      } catch {
+        clearTimeout(safetyTimer);
+        setFeedInitialLoading(false);
+        bootstrappingRef.current = false;
+      }
     })();
 
     return () => {
       cancelled = true;
+      clearTimeout(safetyTimer);
     };
-  }, [uiPhase, feedSession, getNextRotatedTopic, streamSingleCard]);
+  }, [uiPhase, feedSession, getNextRotatedTopic, streamSingleCard, generateVideo, drainPreWarm]);
 
   useEffect(() => {
     if (uiPhase !== "feed") return;
@@ -761,7 +900,10 @@ export default function HomePageClient({ initialTrends = [] }) {
     return () => {
       io.disconnect();
     };
-  }, [cards.length, uiPhase, feedInitialLoading]);
+  // NOTE: dependency is cards[last] not cards.length so the observer re-attaches when
+  // BUFFER_WAIT is replaced by a real card (same length, different last element).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards[cards.length - 1], uiPhase, feedInitialLoading]);
 
   const triggerShake = () => {
     setInputShake(true);
@@ -862,6 +1004,7 @@ export default function HomePageClient({ initialTrends = [] }) {
     const next = pushExplored(topicRef.current.trim(), modeRef.current);
     setExploredList(next);
     generationIdRef.current++;
+    topicVariantRef.current = new Map();
     setFeedSession((s) => s + 1);
     setCards([]);
     setBuffer([]);
@@ -896,6 +1039,7 @@ export default function HomePageClient({ initialTrends = [] }) {
   const handleStartFeed = useCallback(() => {
     if (selectedTopicsRef.current.length === 0) return;
     topicRotationIdxRef.current = 0;
+    topicVariantRef.current = new Map();
     const firstTopic = selectedTopicsRef.current[0];
     topicRef.current = firstTopic;
     setTopic(firstTopic);
@@ -905,8 +1049,17 @@ export default function HomePageClient({ initialTrends = [] }) {
     transitionToFeedHero();
   }, [transitionToFeedHero]);
 
+  const peekHeader = () => {
+    clearTimeout(headerHideTimerRef.current);
+    setHeaderPeeked(true);
+  };
+  const unpeekHeader = () => {
+    headerHideTimerRef.current = setTimeout(() => setHeaderPeeked(false), 120);
+  };
+
   const handleNewTopic = () => {
     generationIdRef.current++;
+    topicVariantRef.current = new Map();
     setUiPhase("landing");
     setCards([]);
     setBuffer([]);
@@ -950,23 +1103,31 @@ export default function HomePageClient({ initialTrends = [] }) {
   const retryLastCard = useCallback(async () => {
     generationIdRef.current++;
     const genId = generationIdRef.current;
+    const t = topicRef.current;
+    const m = modeRef.current;
     setCards((prev) => {
       if (prev.length === 0) return prev;
       const next = [...prev];
       next[next.length - 1] = BUFFER_WAIT;
       return next;
     });
-    const text = await streamSingleCard(genId);
-    const m = modeRef.current;
+    const cardData = await streamSingleCard(genId, t);
+    let newCard = ERROR_CARD_MARKER;
+    if (cardData !== ERROR_CARD_MARKER) {
+      const { prompt: promptText, caption } = cardData;
+      const videoResult = await generateVideo(genId, t, promptText);
+      if (videoResult !== "__VIDEO_ERROR__") {
+        newCard = { videoUrl: videoResult.videoUrl, jobId: videoResult.jobId, mode: m, topic: t, caption, type: "video" };
+      }
+    }
     setCards((prev) => {
       if (prev.length === 0) return prev;
       const next = [...prev];
-      next[next.length - 1] =
-        text === ERROR_CARD_MARKER ? ERROR_CARD_MARKER : { text, mode: m };
+      next[next.length - 1] = newCard;
       return next;
     });
     queueMicrotask(() => refillBufferRef.current());
-  }, [streamSingleCard]);
+  }, [streamSingleCard, generateVideo]);
 
   const toggleLike = useCallback((cardIndex, text, cardMode) => {
     const rec = {
@@ -1027,7 +1188,7 @@ export default function HomePageClient({ initialTrends = [] }) {
       if (prev.some(match)) return prev.filter((r) => !match(r));
       return [...prev, rec];
     });
-    // On save (not unsave): immediately boost sentiment for this topic
+    // On save (not unsave): boost sentiment and record topic in profile
     if (!alreadySaved) {
       setSentimentProfile((prev) => {
         const updated = updateProfile(
@@ -1046,6 +1207,22 @@ export default function HomePageClient({ initialTrends = [] }) {
             scrolledAwayAt: 0.8,
           }
         );
+        // Append to explicit savedTopics list (deduplicated)
+        const existingTopics = Array.isArray(updated.savedTopics) ? updated.savedTopics : [];
+        if (!existingTopics.includes(effectiveTopic)) {
+          updated.savedTopics = [...existingTopics, effectiveTopic];
+        }
+        saveProfile(updated);
+        return updated;
+      });
+    } else {
+      // On unsave: remove topic from profile if no other saves reference it
+      setSentimentProfile((prev) => {
+        const stillSaved = savedRecordsRef.current.some(
+          (r) => r.topic === effectiveTopic && !(r.topic === rec.topic && r.mode === rec.mode && r.text === rec.text)
+        );
+        if (stillSaved) return prev;
+        const updated = { ...prev, savedTopics: (Array.isArray(prev.savedTopics) ? prev.savedTopics : []).filter((t) => t !== effectiveTopic) };
         saveProfile(updated);
         return updated;
       });
@@ -1261,7 +1438,19 @@ export default function HomePageClient({ initialTrends = [] }) {
       )}
 
       {isFeedPhase && (
-        <header className="header header--compact">
+        <>
+          {/* Thin hover-trigger zone always present at top of screen */}
+          <div
+            className="feed-header-trigger"
+            onMouseEnter={peekHeader}
+            onMouseLeave={unpeekHeader}
+            aria-hidden="true"
+          />
+          <header
+            className={`header header--compact${headerPeeked ? " header--peeked" : " header--feed-hidden"}`}
+            onMouseEnter={peekHeader}
+            onMouseLeave={unpeekHeader}
+          >
           <button
             type="button"
             className="new-topic-btn"
@@ -1305,7 +1494,7 @@ export default function HomePageClient({ initialTrends = [] }) {
           </form>
           <div className="header-right header-right--compact">
             {headerSavedBtn}
-            <ModeToggle mode={mode} onModeChange={handleModeChange} disabled={isLoading} />
+            <ModeToggle mode={mode} onModeChange={handleModeChange} disabled={isFeedPhase || isLoading} />
             <button
               className="header-account-btn"
               onClick={() => signOut({ callbackUrl: "/auth/signin" })}
@@ -1315,6 +1504,7 @@ export default function HomePageClient({ initialTrends = [] }) {
             </button>
           </div>
         </header>
+        </>
       )}
 
       <SavedDrawer
@@ -1444,26 +1634,23 @@ export default function HomePageClient({ initialTrends = [] }) {
                 );
               }
               if (isVideoCard(item)) {
-                const { videoUrl, jobId, mode: videoMode } = item;
-                const videoOrdinal = cards
-                  .slice(0, idx + 1)
-                  .filter((c) => isVideoCard(c))
-                  .length;
-
+                const { videoUrl, jobId, mode: videoMode, topic: videoTopic, caption: videoCaption } = item;
+                const displayTopic = videoTopic || topic;
                 return (
                   <div key={idx} className="card-wrapper">
                     <VideoCard
                       videoUrl={videoUrl}
-                      topic={topicRef.current}
+                      topic={displayTopic}
+                      caption={videoCaption || displayTopic}
                       mode={videoMode}
-                      cardNumber={videoOrdinal}
-                      totalCards={3}
                       showTrendingBadge={isTrendingSessionRef.current}
-                      isLiked={false}
-                      isSaved={false}
-                      likeCount={0}
-                      onToggleLike={() => {}}
-                      onToggleSave={() => {}}
+                      isLiked={isTextLiked(videoUrl, videoMode)}
+                      isDisliked={isTextDisliked(videoUrl, videoMode)}
+                      isSaved={isTextSaved(videoUrl, videoMode)}
+                      likeCount={likeCountForText(videoUrl, videoMode)}
+                      onToggleLike={() => toggleLike(idx, videoUrl, videoMode)}
+                      onToggleDislike={() => toggleDislike(idx, videoUrl, videoMode)}
+                      onToggleSave={() => toggleSave(idx, videoUrl, videoMode, displayTopic)}
                       onCardLeave={handleCardLeave}
                       scrollRootRef={feedRef}
                     />

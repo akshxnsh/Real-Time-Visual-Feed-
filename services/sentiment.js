@@ -116,6 +116,9 @@ const defaultProfile = {
   profileConfidence: 0.0, // 0.0 to 1.0
   // Below 0.3 = too early to personalize heavily
   // Reaches 1.0 after 20 videos watched
+
+  // Explicit list of topics the user has saved — used for personalisation and profile display
+  savedTopics: [],
 };
 
 /**

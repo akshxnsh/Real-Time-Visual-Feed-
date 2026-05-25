@@ -16,11 +16,11 @@ export default function LoadingScreen({
       const percentage = (videosLoading / videosTotal) * 100;
       setLoadingPercentage(percentage);
 
-      // Auto-dismiss when all 3 videos are loaded
+      // When all videos are loaded, show BLINK for 3 seconds before dismissing
       if (videosLoading >= videosTotal) {
         const timer = setTimeout(() => {
           onDismiss();
-        }, 500);
+        }, 3000); // 3 seconds
         return () => clearTimeout(timer);
       }
     }
@@ -30,6 +30,12 @@ export default function LoadingScreen({
 
   return (
     <div className="loading-screen">
+      {/* BLINK with two animated dots */}
+      <div className="blink-label">
+        <span className="blink-text">BLINK</span>
+        <span className="blink-dot blink-dot-1">.</span>
+        <span className="blink-dot blink-dot-2">.</span>
+      </div>
       <div className="loading-container">
         {/* Main Loading Indicator */}
         <div className="loading-indicator">

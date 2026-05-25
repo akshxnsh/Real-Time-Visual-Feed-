@@ -30,30 +30,22 @@ def get_node_location():
 
 def fetch_local_trends(country_code: str, topic: str):
     """
-    Fetch trending searches FROM THIS NODE'S IP
-    Indian node → Indian trends
-    US node → US trends
-    Same function, different results by location
+    Fetch trending searches via Google Trends RSS (public feed, no SDK, no auth).
+    Works from any IP including Docker/datacenter.
+    Falls back to empty list on any error.
     """
     try:
-        from pytrends.request import TrendReq
-        pytrends = TrendReq(
-            hl='en-US',
-            tz=330 if country_code == 'IN' else 0,
-            timeout=(10, 25)
-        )
-        pytrends.build_payload(
-            [topic],
-            geo=country_code,
-            timeframe='now 1-d'
-        )
-        related = pytrends.related_queries()
-        rising = related.get(topic, {}).get('rising')
-        if rising is not None and not rising.empty:
-            return rising['query'].head(3).tolist()
-        return []
+        url = f'https://trends.google.com/trending/rss?geo={country_code}'
+        res = requests.get(url, timeout=8, headers={
+            'User-Agent': 'Mozilla/5.0 (compatible; RTVF/1.0)'
+        })
+        res.raise_for_status()
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(res.content)
+        titles = [item.findtext('title') for item in root.iter('item') if item.findtext('title')]
+        return titles[:5]
     except Exception as e:
-        print(f'Trends fetch failed: {e}')
+        print(f'Trends RSS fetch failed: {e}')
         return []
 
 def fetch_breaking_news(country_code: str, category: str = None):
